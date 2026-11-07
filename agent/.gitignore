@@ -3,3 +3,4 @@
 __pycache__/
 attempts.csv
 out/
+.robot_mode.json

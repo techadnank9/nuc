@@ -13,6 +13,7 @@ Env: ROBOT_HOST (default pah@10.103.0.133), ROBOT_CAMERAS=0 to skip the station 
 
 import asyncio
 import datetime
+import json
 import os
 import secrets
 from pathlib import Path
@@ -85,9 +86,25 @@ COMMAND_LOCK = asyncio.Lock()
 
 
 def mode_info() -> dict:
-    mode = os.environ.get("DRAW_MODE", "manual")
-    live = mode == "robot" and os.environ.get("ROBOT_LIVE") == "1"
-    return {"mode": mode, "live": live}
+    mode, live = harness.current_mode()
+    info = {"mode": mode, "live": live, "robot": os.environ.get("DRAW_MODE", "manual") != "manual"}
+    try:
+        until = json.loads(harness.MODE_FILE.read_text()).get("until", 0)
+        info["live_left_s"] = max(0, int(until - __import__("time").time())) if live else 0
+    except (OSError, ValueError):
+        info["live_left_s"] = 0
+    return info
+
+
+async def robot_mode(request: web.Request) -> web.Response:
+    body = await request.json()
+    result = harness.set_live(bool(body.get("live")))
+    if "error" in result:
+        return web.json_response(result, status=400)
+    await push_event("ok" if not result["live"] else "run",
+                     f"Live mode ON for {harness.LIVE_MINUTES} min: the arms will move" if result["live"]
+                     else "Live mode OFF: dry runs only, the arms will not move")
+    return web.json_response(mode_info())
 
 
 async def push_event(step: str, text: str) -> None:
@@ -123,6 +140,8 @@ async def robot_events(request: web.Request) -> web.Response:
 
 
 async def start_cameras(app: web.Application) -> None:
+    if os.environ.get("DRAW_MODE", "manual") != "manual":
+        harness.set_live(False)  # every start is a dry run until the operator presses the live button
     app["http"] = aiohttp.ClientSession()
     app["tunnel"] = None
     if not CAMERAS:
@@ -161,6 +180,7 @@ def main() -> None:
     app.router.add_get("/robot/status", robot_status)
     app.router.add_post("/robot/command", robot_command)
     app.router.add_post("/robot/stop", robot_stop)
+    app.router.add_post("/robot/mode", robot_mode)
     app.router.add_get("/robot/events", robot_events)
     app.on_startup.append(start_cameras)
     app.on_cleanup.append(stop_cameras)

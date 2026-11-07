@@ -34,6 +34,32 @@ ACTION_SPACE = os.environ.get("DRAW_ACTION_SPACE", "joint" if CHECKPOINT else ""
 BUDGET_S = int(os.environ.get("DRAW_BUDGET_S", "35"))  # homing + draw + place; tune on the real arm
 HERE = Path(__file__).resolve().parent
 LOG = HERE / "attempts.csv"
+MODE_FILE = HERE / ".robot_mode.json"  # written by web_server.py when the operator presses the live-mode button
+LIVE_MINUTES = 15
+
+
+def current_mode() -> tuple[str, bool]:
+    """(mode, live) for this moment: the page's live switch if it is on and not expired, else the env."""
+    mode = os.environ.get("DRAW_MODE", "manual")
+    live_env = mode == "robot" and os.environ.get("ROBOT_LIVE") == "1"
+    try:
+        state = json.loads(MODE_FILE.read_text())
+        if mode != "manual" and state.get("live") and state.get("until", 0) > time.time():
+            return "robot", True
+        if mode != "manual" and not state.get("live"):
+            return "robot-dry", False
+    except (OSError, ValueError):
+        pass
+    return mode, live_env
+
+
+def set_live(on: bool) -> dict:
+    """Turn live mode on (for LIVE_MINUTES) or off. Refused when the server runs without the robot."""
+    if os.environ.get("DRAW_MODE", "manual") == "manual":
+        return {"error": "This server was started without the robot (DRAW_MODE=manual)."}
+    MODE_FILE.write_text(json.dumps({"live": on, "until": time.time() + LIVE_MINUTES * 60 if on else 0}))
+    mode, live = current_mode()
+    return {"mode": mode, "live": live}
 REMOTE_READER = "/tmp/station_read_card.py"
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST]
 
@@ -114,15 +140,15 @@ async def stop_robot() -> None:
 async def run_command(task: str, seconds: int = 30, mode: str | None = None, on_step=None) -> dict:
     """Run Dream-1 on any task typed by the operator (no card logic). Same safety gates as draw_card()."""
     on_step = on_step or _noop
-    mode = mode or os.environ.get("DRAW_MODE", "manual")
+    mode, live_now = (mode, mode == "robot" and os.environ.get("ROBOT_LIVE") == "1") if mode else current_mode()
     live = mode == "robot"
     seconds = max(30, min(int(seconds), 120))  # dreamcli needs ~10-20 s to start before Dream-1 answers
     if mode == "manual":
         await on_step("failed", "The server runs without the robot (DRAW_MODE=manual): start it with DRAW_MODE=robot-dry or robot")
         return {"ok": False, "error": "no robot in manual mode"}
     await on_step("check", f'Command for Dream-1: "{task}"')
-    if live and os.environ.get("ROBOT_LIVE") != "1":
-        await on_step("failed", "Live mode needs ROBOT_LIVE=1, set by the person at the e-stop")
+    if live and not live_now:
+        await on_step("failed", "Live mode is off: press Turn on live mode first")
         return {"ok": False, "error": "ROBOT_LIVE not set"}
     if reason := await preflight():
         await on_step("failed", reason)
@@ -159,7 +185,7 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
 
     Steps, in order: check, stand, release, policy, stop, read, done (or failed).
     """
-    mode = mode or os.environ.get("DRAW_MODE", "manual")
+    mode, live_now = (mode, mode == "robot" and os.environ.get("ROBOT_LIVE") == "1") if mode else current_mode()
     t0 = time.time()
     if mode == "manual":
         for step, text, wait in [
@@ -174,7 +200,7 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
     elif mode in ("robot", "robot-dry"):
         live = mode == "robot"
         await on_step("check", "Checking the arms are free and both links are up")
-        if live and os.environ.get("ROBOT_LIVE") != "1":
+        if live and not live_now:
             result = {"ok": False, "error": "live mode needs ROBOT_LIVE=1, set by the person at the e-stop"}
         elif reason := await preflight():
             result = {"ok": False, "error": reason}

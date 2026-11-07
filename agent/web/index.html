@@ -133,6 +133,9 @@
   .cmd select { background:var(--booth); border:1px solid #ffffff1f; border-radius:var(--r-ctl); padding:9px 10px; min-height:44px; }
   .cmd .go { background:var(--brass); color:#2a1d05; border:0; border-radius:var(--r-ctl); padding:0 14px; min-height:44px; font-weight:600; cursor:pointer; }
   .cmd .stop { background:var(--ember); color:#2c0e06; border:0; border-radius:var(--r-ctl); padding:0 14px; min-height:44px; font-weight:600; cursor:pointer; margin-left:auto; }
+  .livebtn { width:100%; margin-bottom:10px; border-radius:var(--r-ctl); min-height:48px; font-weight:600; cursor:pointer; border:2px solid var(--ember); background:transparent; color:#f3c2b4; }
+  .livebtn.on { background:var(--ember); color:#2c0e06; }
+  .livebtn:disabled { opacity:.4; cursor:default; }
   .cmd .mode { font-size:12.5px; color:var(--dim); margin-top:8px; }
   .cmd .mode.live { color:var(--ember); font-weight:600; }
   .cmd .err { color:#f3c2b4; font-size:13px; min-height:18px; margin-top:6px; }
@@ -222,6 +225,7 @@
     </div>
     <div class="block cmd">
       <h2>Command the arms</h2>
+      <button class="livebtn" id="liveBtn" disabled>Turn on live mode</button>
       <div class="chips" id="chips">
         <button data-task="pick up the card by its handle">Pick up the card</button>
         <button data-task="place the card you are holding in the stand">Place it in the stand</button>
@@ -466,12 +470,15 @@ async function pollEvents() {
   try {
     const d = await (await fetch(`/robot/events?since=${evSince}`, { cache: "no-store" })).json();
     for (const e of d.events) { evSince = e.id; log(e.step === "failed" ? "bad" : e.step === "done" ? "ok" : "run", e.text); }
-    const m = $("cmdMode");
+    const m = $("cmdMode"), lb = $("liveBtn");
     m.className = "mode" + (d.live ? " live" : "");
-    m.textContent = d.live ? "Live: the arms will move. Keep a hand on the emergency stop."
-      : d.mode === "robot-dry" ? "Dry run: Dream-1 runs, the arms do not move."
-      : d.mode === "robot" ? "Robot mode without ROBOT_LIVE=1: commands are refused."
-      : "No robot connected (started in manual mode): commands are refused.";
+    const mins = Math.ceil((d.live_left_s || 0) / 60);
+    m.textContent = d.live ? `Live: the arms will move. Keep a hand on the emergency stop. Switches back to dry run in ${mins} min.`
+      : d.robot ? "Dry run: Dream-1 runs, the arms do not move."
+      : "No robot connected (server started with DRAW_MODE=manual): commands are refused.";
+    lb.disabled = !d.robot || d.busy;
+    lb.classList.toggle("on", !!d.live);
+    lb.textContent = d.live ? "Live mode on: turn off" : "Turn on live mode";
     $("cmdGo").disabled = d.busy; $("cmdGo").textContent = d.busy ? "Running…" : "Send to Dream-1";
     $("fOverhead").classList.toggle("drawing", d.busy);
   } catch {}
@@ -494,6 +501,12 @@ $("cmdGo").onclick = async () => {
 };
 $("cmdText").addEventListener("input", () => $("cmdErr").textContent = "");
 $("cmdStop").onclick = async () => { await fetch("/robot/stop", { method: "POST" }); };
+$("liveBtn").onclick = async () => {
+  const turningOn = !$("liveBtn").classList.contains("on");
+  if (turningOn && !confirm("Turn on live mode?\n\nThe arms will really move on the next command or voice draw.\n\n- Your hand is on the emergency stop\n- Nobody is within reach of the arms\n\nLive mode switches itself off after 15 minutes.")) return;
+  const r = await fetch("/robot/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ live: turningOn }) });
+  if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "Could not change the mode.";
+};
 
 /* level ring: show the guest that the mic hears them */
 setInterval(() => {
