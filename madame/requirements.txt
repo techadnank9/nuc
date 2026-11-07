@@ -1,2 +1,0 @@
-livekit-agents[silero]~=1.2
-python-dotenv
