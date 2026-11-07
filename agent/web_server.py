@@ -7,7 +7,7 @@
   On stop, it ends the relay so other programs (run.sh, the teleop dashboard) can use the cameras again.
 
 Run: always with ./start_web.sh (from agent/), which starts this server and the agent together,
-connected to the robot and in live mode; then open http://127.0.0.1:8765.
+connected to the robot (the arms move on every command and draw); then open http://127.0.0.1:8765.
 Env: ROBOT_HOST (default pah@10.103.0.133), ROBOT_CAMERAS=0 to skip the station cameras.
 """
 
@@ -87,31 +87,7 @@ COMMAND_LOCK = asyncio.Lock()
 
 def mode_info() -> dict:
     mode, live = harness.current_mode()
-    info = {"mode": mode, "live": live, "robot": os.environ.get("DRAW_MODE", "manual") != "manual"}
-    try:
-        until = json.loads(harness.MODE_FILE.read_text()).get("until", 0)
-        info["live_left_s"] = max(0, int(until - __import__("time").time())) if live else 0
-    except (OSError, ValueError):
-        info["live_left_s"] = 0
-    return info
-
-
-async def robot_mode(request: web.Request) -> web.Response:
-    body = await request.json()
-    result = harness.set_live(bool(body.get("live")), minutes=12 * 60)  # on = for the whole session
-    if "error" in result:
-        return web.json_response(result, status=400)
-    if body.get("quiet") and result["live"]:
-        return web.json_response(mode_info())  # a new reading re-arming live mode: no log line needed
-    await push_event("ok" if not result["live"] else "run",
-                     "Live mode ON: the arms will move" if result["live"]
-                     else "Live mode OFF: dry runs only, the arms will not move")
-    return web.json_response(mode_info())
-
-
-async def push_event(step: str, text: str) -> None:
-    EVENTS.append({"id": len(EVENTS), "step": step, "text": text})
-    del EVENTS[:-200]
+    return {"mode": mode, "live": live, "robot": mode == "robot"}
 
 
 async def robot_command(request: web.Request) -> web.Response:
@@ -142,14 +118,6 @@ async def robot_events(request: web.Request) -> web.Response:
 
 
 async def start_cameras(app: web.Application) -> None:
-    if os.environ.get("DRAW_MODE", "manual") != "manual":
-        # LIVE_DEFAULT=1 (set by start_web.sh, run by the person at the desk): start live, for the whole session.
-        # Otherwise every start is a dry run until the operator presses the live button.
-        if os.environ.get("LIVE_DEFAULT", "1") == "1":
-            harness.set_live(True, minutes=12 * 60)
-            await push_event("run", "Live mode ON (started live): the arms will move. Press the button to turn it off.")
-        else:
-            harness.set_live(False)
     app["http"] = aiohttp.ClientSession()
     app["tunnel"] = None
     if not CAMERAS:
@@ -188,7 +156,6 @@ def main() -> None:
     app.router.add_get("/robot/status", robot_status)
     app.router.add_post("/robot/command", robot_command)
     app.router.add_post("/robot/stop", robot_stop)
-    app.router.add_post("/robot/mode", robot_mode)
     app.router.add_get("/robot/events", robot_events)
     app.on_startup.append(start_cameras)
     app.on_cleanup.append(stop_cameras)

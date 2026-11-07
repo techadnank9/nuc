@@ -1,6 +1,6 @@
 # Fortune Teller page: design notes
 
-The page's job: a guest standing at the desk **talks to the Fortune Teller** and watches what the robot's hands are doing. The guest can already see the arms in person, so the cameras are compact; voice and the transcript are the centre, with live captions on the overhead camera and the robot action log beside it. An operator box sends direct commands to Dream-1.
+The page's job: a guest standing at the desk **talks to the Fortune Teller** and watches what the robot's hands are doing. The guest can already see the arms in person, so the cameras are compact; voice and the transcript are the centre, with live captions on the overhead camera and the robot action log beside it. An operator box sends direct commands to Dream-1. With the robot connected everything is live: every draw and every command moves the arms; Stop arms and the emergency stop halt them.
 
 ## Layout
 

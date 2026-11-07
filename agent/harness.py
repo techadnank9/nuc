@@ -2,13 +2,12 @@
 
 Modes (env DRAW_MODE, or --mode on the command line):
 - manual     no robot: a random card after a short pause (test the conversation)
-- robot-dry  Dream-1 runs for real but nothing is sent to the arms (--dry-run); the card is then read
              from the overhead camera, so place one in the stand by hand to test the reading
-- robot      LIVE: the arms move. Refused unless ROBOT_LIVE=1 is also set, by the person at the e-stop.
+- robot      the arms move: Dream-1 drives them (hand on the e-stop).
 
 Every attempt is appended to agent/attempts.csv.
 
-Command line (from agent/):  uv run python harness.py --mode robot-dry
+Command line (from agent/):  uv run python harness.py --mode robot
 """
 
 from __future__ import annotations
@@ -36,32 +35,12 @@ BUDGET_S = int(os.environ.get("DRAW_BUDGET_S", "90"))  # ~20 s startup/homing + 
 READ_TAG = os.environ.get("READ_TAG", "0") == "1"
 HERE = Path(__file__).resolve().parent
 LOG = HERE / "attempts.csv"
-MODE_FILE = HERE / ".robot_mode.json"  # written by web_server.py when the operator presses the live-mode button
-LIVE_MINUTES = 15
 
 
 def current_mode() -> tuple[str, bool]:
-    """(mode, live) for this moment: the page's live switch if it is on and not expired, else the env."""
-    mode = os.environ.get("DRAW_MODE", "manual")
-    live_env = mode == "robot" and os.environ.get("ROBOT_LIVE") == "1"
-    try:
-        state = json.loads(MODE_FILE.read_text())
-        if mode != "manual" and state.get("live") and state.get("until", 0) > time.time():
-            return "robot", True
-        if mode != "manual" and not state.get("live"):
-            return "robot-dry", False
-    except (OSError, ValueError):
-        pass
-    return mode, live_env
-
-
-def set_live(on: bool, minutes: float = LIVE_MINUTES) -> dict:
-    """Turn live mode on (for `minutes`) or off. Refused when the server runs without the robot."""
-    if os.environ.get("DRAW_MODE", "manual") == "manual":
-        return {"error": "This server was started without the robot (DRAW_MODE=manual)."}
-    MODE_FILE.write_text(json.dumps({"live": on, "until": time.time() + minutes * 60 if on else 0}))
-    mode, live = current_mode()
-    return {"mode": mode, "live": live}
+    """(mode, live): with the robot connected (DRAW_MODE=robot) the arms always move; manual = no robot at all."""
+    mode = "robot" if os.environ.get("DRAW_MODE", "manual") != "manual" else "manual"
+    return mode, mode == "robot"
 REMOTE_READER = "/tmp/station_read_card.py"
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST]
 
@@ -144,15 +123,13 @@ async def relay(action: str) -> None:
     await _sh(SSH + [f"curl -s -m 8 -X POST 127.0.0.1:8097/{action} >/dev/null 2>&1 || true"], 20)
 
 
-async def run_policy(dry: bool, task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str]:
+async def run_policy(task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str]:
     """Start Dream-1 on the station and stop it with SIGINT after `budget` s (dreamcli then homes and releases)."""
     cmd = ["dreamcli", "robot", "run", "--task", task]
     if CHECKPOINT:
         cmd += ["--checkpoint", CHECKPOINT]
     if ACTION_SPACE:
         cmd += ["--action-space", ACTION_SPACE]
-    if dry:
-        cmd.append("--dry-run")
     cmd.append("--view")  # dreamcli's own page on 127.0.0.1:8093: the relay mirrors its frames to the web app
     remote = (
         "source ~/dream-env/bin/activate && cd ~/physical-ai-hacks && "
@@ -170,25 +147,20 @@ async def stop_robot() -> None:
 async def run_command(task: str, seconds: int = 30, mode: str | None = None, on_step=None) -> dict:
     """Run Dream-1 on any task typed by the operator (no card logic). Same safety gates as draw_card()."""
     on_step = on_step or _noop
-    mode, live_now = (mode, mode == "robot" and os.environ.get("ROBOT_LIVE") == "1") if mode else current_mode()
-    live = mode == "robot"
+    mode = mode or current_mode()[0]
     seconds = max(30, min(int(seconds), 120))  # dreamcli needs ~10-20 s to start before Dream-1 answers
     if mode == "manual":
-        await on_step("failed", "The server runs without the robot (DRAW_MODE=manual): start it with DRAW_MODE=robot-dry or robot")
+        await on_step("failed", "No robot connected (started with DRAW_MODE=manual): start the page with ./start_web.sh")
         return {"ok": False, "error": "no robot in manual mode"}
     await on_step("check", f'Command for Dream-1: "{task}"')
-    if live and not live_now:
-        await on_step("failed", "Live mode is off: press Turn on live mode first")
-        return {"ok": False, "error": "ROBOT_LIVE not set"}
     if reason := await preflight():
         await on_step("failed", reason)
         return {"ok": False, "error": reason}
     await on_step("release", "Handing the cameras to Dream-1")
     await relay("release")
     try:
-        await on_step("policy", (f"Arms moving home, then Dream-1 runs for {seconds} s" if live
-                                 else f"Dream-1 dry run for {seconds} s: nothing is sent to the arms"))
-        code, out = await run_policy(dry=not live, task=task, budget=seconds)
+        await on_step("policy", f"Arms moving home, then Dream-1 runs for {seconds} s")
+        code, out = await run_policy(task=task, budget=seconds)
         await on_step("stop", "Dream-1 stopped: arms return home and switch off")
     finally:
         await relay("resume")
@@ -215,7 +187,7 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
 
     Steps, in order: check, stand, release, policy, stop, read, done (or failed).
     """
-    mode, live_now = (mode, mode == "robot" and os.environ.get("ROBOT_LIVE") == "1") if mode else current_mode()
+    mode = mode or current_mode()[0]
     t0 = time.time()
     if mode == "manual":
         for step, text, wait in [
@@ -227,12 +199,9 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
             await on_step(step, text)
             await asyncio.sleep(wait)
         result = {"ok": True, "card_id": random.choice(list(CARDS))}
-    elif mode in ("robot", "robot-dry"):
-        live = mode == "robot"
+    elif mode == "robot":
         await on_step("check", "Checking the arms are free and both links are up")
-        if live and not live_now:
-            result = {"ok": False, "error": "live mode needs ROBOT_LIVE=1, set by the person at the e-stop"}
-        elif reason := await preflight():
+        if reason := await preflight():
             result = {"ok": False, "error": reason}
         else:
             await on_step("release", "Handing the cameras to Dream-1")
@@ -243,10 +212,8 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
                     # The stand must be empty before a draw, or an old card would count as this draw's success.
                     result = {"ok": False, "error": f"the stand is not empty (tags {before['seen']}): clear it first"}
                 else:
-                    await on_step("policy", ("Arms moving home, then Dream-1 draws the card" if live
-                                             else "Dream-1 running as a dry run: nothing is sent to the arms")
-                                  + f" ({BUDGET_S} s)")
-                    code, out = await run_policy(dry=not live)
+                    await on_step("policy", f"Arms moving home, then Dream-1 draws the card ({BUDGET_S} s)")
+                    code, out = await run_policy()
                     await on_step("stop", "Stopping Dream-1: arms return home and switch off")
                     if code not in (0, 124, 130):
                         result = {"ok": False, "error": explain(out)}
@@ -269,7 +236,7 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--mode", choices=["manual", "robot-dry", "robot"], default=None)
+    ap.add_argument("--mode", choices=["manual", "robot"], default=None)
     ap.add_argument("--read-only", action="store_true", help="only read the card in the stand (no Dream run)")
     a = ap.parse_args()
     print(json.dumps(asyncio.run(read_card() if a.read_only else draw_card(a.mode)), indent=2))
