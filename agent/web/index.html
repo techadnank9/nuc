@@ -98,12 +98,15 @@
   .talk { background:var(--velvet); border-radius:var(--r-frame); padding:18px; display:flex; flex-direction:column; gap:14px; min-width:0; }
   .speak { display:flex; flex-direction:column; align-items:center; gap:10px; padding:6px 0 4px; }
   .convo { flex:1; display:flex; flex-direction:column; min-height:0; }
-  .speak button { position:relative; width:128px; height:128px; border-radius:50%; border:0; cursor:pointer; display:grid; place-items:center;
+  .speak #micBtn { position:relative; width:128px; height:128px; border-radius:50%; border:0; cursor:pointer; display:grid; place-items:center;
                   background:var(--brass); color:#2a1d05; box-shadow:0 0 0 8px #c9a2271f; touch-action:none; user-select:none; -webkit-user-select:none; }
-  .speak button svg { width:46px; height:46px; }
-  .speak button:hover:not(:disabled) { background:var(--brass-soft); }
-  .speak button.live { background:var(--jade); color:#0e2b25; box-shadow:0 0 0 calc(8px + var(--lvl, 0px)) #4fb3a240; }
-  .speak button:disabled { opacity:.4; cursor:default; }
+  .speak #micBtn svg { width:46px; height:46px; }
+  .speak #micBtn:hover:not(:disabled) { background:var(--brass-soft); }
+  .speak #micBtn.live { background:var(--jade); color:#0e2b25; box-shadow:0 0 0 calc(8px + var(--lvl, 0px)) #4fb3a240; }
+  .speak #micBtn:disabled { opacity:.4; cursor:default; }
+  .speakrow { display:flex; gap:10px; justify-content:center; min-height:44px; }
+  .speakrow .end { margin-left:0; }
+  .speakrow [hidden] { display:none; }
   .speak .hint { font-size:14px; color:var(--dim); text-align:center; min-height:40px; }
   .speak .hint b { color:var(--parch); font-weight:600; }
   .talk h2 { margin:0 0 8px; font-size:15px; font-weight:600; color:var(--brass-soft); }
@@ -149,7 +152,6 @@
     <span class="pill" id="pRobot"><i></i><span>Robot</span></span>
     <span class="pill" id="pVoice"><i></i><span>Voice</span></span>
   </div>
-  <button class="primary" id="startBtn">Begin a reading</button>
 </header>
 
 <main class="booth">
@@ -183,6 +185,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
       </button>
       <div class="hint" id="micHint"><b>Tap to start talking</b></div>
+      <div class="speakrow">
+        <button class="ghost" id="startBtn" hidden>New reading</button>
+        <button class="end" id="endBtn" hidden>End reading</button>
+      </div>
     </div>
     <div class="convo">
       <h2>Transcript</h2>
@@ -198,7 +204,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>
       </button>
       <select id="camSelect" class="ghost" aria-label="Your camera" disabled><option>Your camera</option></select>
-      <button class="end" id="endBtn" disabled>End reading</button>
     </div>
   </section>
 
@@ -368,7 +373,7 @@ async function setCamera(on) {
 }
 
 async function begin() {
-  $("startBtn").disabled = true; $("startBtn").textContent = "Summoning…"; voice("busy", "Connecting");
+  $("startBtn").hidden = true; voice("busy", "Connecting");
   $("lines").innerHTML = ""; bubbles.clear(); asked = false; resetCard(); progress("listen");
   try {
     const res = await fetch("/token"); if (!res.ok) throw new Error(`the page server answered ${res.status}`);
@@ -413,11 +418,11 @@ async function begin() {
       await setCamera(true);
     } catch { camOn = false; $("camBtn").className = "round off"; }
 
-    ["camBtn","camSelect","text","sendBtn","endBtn"].forEach(id => $(id).disabled = false);
-    $("startBtn").textContent = "Reading in progress"; voice("busy", "Waking up");
+    ["camBtn","camSelect","text","sendBtn"].forEach(id => $(id).disabled = false);
+    $("startBtn").hidden = true; $("endBtn").hidden = false; voice("busy", "Waking up");
   } catch (e) {
     line("sys", "Could not start the reading: " + e.message + ". Check the page server and agent are running, then try again.");
-    $("startBtn").disabled = false; $("startBtn").textContent = "Begin a reading"; voice("bad", "Not connected");
+    $("startBtn").hidden = false; $("endBtn").hidden = true; voice("bad", "Not connected");
   }
 }
 
@@ -425,12 +430,12 @@ async function finish(fromEvent = false) {
   if (room && !fromEvent) await room.disconnect();
   room = null; micOn = false; $("micBtn").classList.remove("live"); $("micHint").innerHTML = "<b>Tap to start talking</b>";
   $("pip").classList.add("off"); $("fOverhead").classList.remove("drawing");
-  ["camBtn","camSelect","text","sendBtn","endBtn"].forEach(id => $(id).disabled = true);
-  $("startBtn").disabled = false; $("startBtn").textContent = "New reading"; voice("", "Voice");
+  ["camBtn","camSelect","text","sendBtn"].forEach(id => $(id).disabled = true);
+  $("startBtn").hidden = false; $("endBtn").hidden = true; voice("", "Voice");
   line("sys", "The reading has ended.");
 }
 
-$("startBtn").onclick = begin;
+$("startBtn").onclick = async () => { await begin(); if (room && micOk) { held = false; await setMic(true); } };
 $("endBtn").onclick = () => finish();
 /* Voice button: tap = toggle, hold (or hold the space bar) = talk while pressed */
 let micOk = false, pressAt = 0, held = false;
