@@ -266,9 +266,9 @@
     <tr><td>Card v2 × 7</td><td>Bigger 4 mm handle chamfers, front sticker pocket. Sun, Moon, Star, Wheel of Fortune, Lovers, Strength, World</td><td>To model</td></tr>
     <tr><td>Deck tray</td><td>Cards lean at about 15°, 3 mm side play</td><td>To model</td></tr>
     <tr><td>Reveal stand</td><td>Angled slot with a wide funnel mouth</td><td>To model</td></tr>
-    <tr><td>Stickers</td><td>Full-colour art plus a 15 mm ArUco tag (id = card number)</td><td>To print</td></tr>
+    <tr><td>Stickers</td><td>Full-colour art plus a 25 to 30 mm ArUco tag facing the overhead camera (id = card number)</td><td>To print</td></tr>
   </table>
-  <div class="callout">Why the handle: the gripper opens to about 100 mm and the handle is 14 mm thick, so the fingers can arrive about 4 cm off-centre on either side and still close on it. 45° chamfers on top guide a finger that lands on the edge down onto the flat grip faces.</div>
+  <div class="callout">Why the handle: the gripper opens to about 100 mm and the handle is 14 mm thick, which leaves room for the fingers to arrive off-centre along that axis. Chamfers on top help a finger that lands on the edge. This still has to be proven with the real jaws before the full deck is printed.</div>
 </section>
 
 <section id="training">
@@ -325,7 +325,7 @@ const steps = [
   { t: "15 to 40 s", who: "Dream-1 + Maker Arm", h: "The arm draws", p: "The right arm reaches into the deck tray, grips the front card by its handle, lifts it and places it in the reveal stand facing the guest." },
   { t: "40 s", who: "Harness", h: "The reveal", p: "The run stops and the arm rests. The overhead camera reads the small tag on the card: The Sun." },
   { t: "45 to 60 s", who: "Voice agent", h: "The fortune", p: "The agent reads the card's meaning tied to the guest's question, then wishes them well.", say: "“The Sun. Warmth and clarity. The path you ask about is lit…”" },
-  { t: "If it fails", who: "Voice agent + guest", h: "The stuck path", p: "If no card reaches the stand, the agent asks the guest to nudge the card into the robot's hand, then tries once more.", say: "“The spirits are hesitant… would you guide the card into my hand?”" }
+  { t: "If it fails", who: "Voice agent + guest", h: "The stuck path", p: "If no card reaches the stand, the arms come to rest and the agent asks the guest to set the card back in the deck and step back, then tries once more.", say: "“The spirits are hesitant… would you set the card back in the deck for me?”" }
 ];
 let i = 0;
 const dots = document.getElementById("dots"), body = document.getElementById("stepBody");

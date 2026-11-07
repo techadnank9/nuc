@@ -17,7 +17,7 @@ Why the arm is the point: a screen can pick a random card, but it cannot *draw* 
 | 15 to 40 s | Right arm reaches into the deck tray, grips the front card by its handle, lifts it and drops it into the reveal stand facing the guest. | Dream-1 (fine-tuned) |
 | 40 to 45 s | Overhead camera reads the card's tag: "The Sun". | Harness |
 | 45 to 60 s | Agent reads the fortune, tied to the guest's question. | Voice agent |
-| If the grab fails | "The spirits are hesitant... would you guide the card into my hand?" Guest nudges the card, arm retries once. | Harness, voice agent |
+| If the grab fails | The run stops and the arms rest. "The spirits are hesitant... would you set the card back in the deck?" Guest reseats it and steps back, arm retries once. | Harness, voice agent |
 
 ## The key design decision: one motion, done perfectly
 
@@ -59,7 +59,7 @@ Notes:
 | Card v2 × 7 | v1 plus 4 mm handle chamfers and a 0.6 mm front sticker pocket. Deck: Sun, Moon, Star, Wheel of Fortune, Lovers, Strength, World (original art). | To model |
 | Deck tray (gravity feeder) | Cards lean at ~15°, front card's handle always at the same spot, side walls with 3 mm play | To model |
 | Reveal stand | Angled slot (~60°) with a wide funnel mouth, so a card dropped roughly above it slides in. Faces the guest and the overhead camera. | To model |
-| Stickers | Full-colour card art on sticker paper, plus a 15 mm ArUco tag in one corner of each face (tag id = card number) | To print |
+| Stickers | Full-colour card art on sticker paper, plus a 25 to 30 mm ArUco tag (DICT_4X4_50, id = card number) on each face; the overhead camera looks forward across the table, so tags face it (tag id = card number) | To print |
 | Table mat | Dark cloth, marked spots for tray and stand, so they never move between demos and runs | Buy or improvise |
 
 Mount the tray and stand to the table (tape or clamps). If they move, the model's demos no longer match.
@@ -139,3 +139,13 @@ Mount the tray and stand to the table (tape or clamps). If they move, the model'
 - One person on the emergency stop, nobody within reach of the arms.
 - Arms rest where they can go limp before every start and stop.
 - `--dry-run` first after any config change.
+
+## Changes after Codex review (Nov 7, 1:15 pm)
+
+1. Grasp tolerance is unproven: the 100 mm opening gives clearance along one axis only. Test card v1 in the real jaws (teleop) before printing the deck.
+2. Start with **one card in a fixed slot**, loaded unseen by the guest; the 7-card gravity feeder is a stretch goal.
+3. The time budget is not completion detection: measure homing time and what the policy does after placing; test SIGINT stop, disconnects and camera release.
+4. The stuck path cannot ask the guest to guide the card into the hand: after a stop the arms are home and limp. The guest reseats the card in the tray instead.
+5. Prove teleop transfers and a small fine-tune dataset in the next two hours; set a hard cut-off for queueing.
+6. The harness now requires an empty stand before a draw, enforces 2 attempts per reading with a lock, and logs every attempt.
+7. Film early; keep the conversation to name + question + draw + fortune.
