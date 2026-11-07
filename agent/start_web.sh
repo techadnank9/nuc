@@ -5,7 +5,7 @@
 #   DRAW_MODE=robot-dry ./start_web.sh                 # Dream-1 runs, arms do NOT move
 #   DRAW_MODE=robot ROBOT_LIVE=1 ./start_web.sh        # LIVE: arms move (hand on the e-stop)
 #
-# Then open http://localhost:8765 in Chrome or Safari (not an embedded browser: it needs the mic).
+# Then open http://127.0.0.1:8765 in Chrome or Safari (not an embedded browser: it needs the mic).
 set -euo pipefail
 cd "$(dirname "$0")"
 trap 'kill 0' EXIT
@@ -14,6 +14,6 @@ sleep 4
 uv run python web_server.py &
 sleep 2
 echo
-echo "  Open http://localhost:8765   (DRAW_MODE=${DRAW_MODE:-manual})"
+echo "  Open http://127.0.0.1:8765   (DRAW_MODE=${DRAW_MODE:-manual})"
 echo
 wait

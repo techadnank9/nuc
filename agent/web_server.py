@@ -44,10 +44,12 @@ async def token(_: web.Request) -> web.Response:
 
 
 def main() -> None:
-    app = web.Application()
+    # Browsers send every cookie set for localhost (often large auth tokens from other local projects):
+    # accept big headers instead of failing with "Got more than 8190 bytes".
+    app = web.Application(handler_args={"max_field_size": 65536, "max_line_size": 65536})
     app.router.add_get("/", index)
     app.router.add_get("/token", token)
-    print(f"Fortune Teller web app on http://localhost:{PORT}  (agent '{AGENT_NAME}' must be running)")
+    print(f"Fortune Teller web app on http://127.0.0.1:{PORT}  (agent '{AGENT_NAME}' must be running)")
     web.run_app(app, host="127.0.0.1", port=PORT, print=None)
 
 
