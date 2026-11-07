@@ -26,12 +26,14 @@ from pathlib import Path
 from cards import CARDS
 
 HOST = os.environ.get("ROBOT_HOST", "pah@10.103.0.133")
-TASK = os.environ.get("DRAW_TASK", "draw the front card from the deck and place it in the stand")
+TASK = os.environ.get("DRAW_TASK", "pick up the black card")
 CHECKPOINT = os.environ.get("DRAW_CHECKPOINT", "")  # e.g. dream-1-ft:<account>-fortune; empty = base Dream-1
 # NUCK-8's arms are YAMs (the 11:43 live run tracked its commands under body: yam). A YAM fine-tune drives
 # the joints it learned, so it runs with --action-space joint (docs/running_your_model.md).
 ACTION_SPACE = os.environ.get("DRAW_ACTION_SPACE", "joint" if CHECKPOINT else "")
-BUDGET_S = int(os.environ.get("DRAW_BUDGET_S", "35"))  # homing + draw + place; tune on the real arm
+BUDGET_S = int(os.environ.get("DRAW_BUDGET_S", "90"))  # ~20 s startup/homing + ~70 s of Dream-1
+# Until the cards carry ArUco tag stickers, a completed run reveals a random card (READ_TAG=1 to use the camera).
+READ_TAG = os.environ.get("READ_TAG", "0") == "1"
 HERE = Path(__file__).resolve().parent
 LOG = HERE / "attempts.csv"
 MODE_FILE = HERE / ".robot_mode.json"  # written by web_server.py when the operator presses the live-mode button
@@ -236,8 +238,8 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
             await on_step("release", "Handing the cameras to Dream-1")
             await relay("release")
             try:
-                await on_step("stand", "Checking the reveal stand is empty")
-                if (before := await read_card()).get("seen"):
+                await on_step("stand", "Checking the reveal stand is empty" if READ_TAG else "Card tags not in use yet: skipping the stand check")
+                if READ_TAG and (before := await read_card()).get("seen"):
                     # The stand must be empty before a draw, or an old card would count as this draw's success.
                     result = {"ok": False, "error": f"the stand is not empty (tags {before['seen']}): clear it first"}
                 else:
@@ -248,9 +250,12 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
                     await on_step("stop", "Stopping Dream-1: arms return home and switch off")
                     if code not in (0, 124, 130):
                         result = {"ok": False, "error": explain(out)}
-                    else:
+                    elif READ_TAG:
                         await on_step("read", "Reading the card's tag from the overhead camera")
                         result = await read_card()
+                    else:
+                        await on_step("read", "Run complete: the spirits choose the card (tag stickers not in use yet)")
+                        result = {"ok": True, "card_id": random.choice(list(CARDS)), "seen": []}
             finally:
                 await relay("resume")
     else:
