@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fortune card handles: 10 concepts</title>
+<style>
+  :root { --ink:#1d1a2b; --paper:#fbf6ea; --gold:#b8891c; --plum:#3b2c6e; --line:#e2d9c2; --muted:#6b6578;
+          --good:#0f6e56; --goodbg:#e1f5ee; --mid:#8a5a00; --midbg:#fbefd2; --bad:#a32d2d; --badbg:#fcebeb; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.6 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif; }
+  header { background:var(--plum); color:#f7eed2; padding:40px 24px 32px; text-align:center; }
+  header h1 { font:400 36px/1.15 Georgia,"Times New Roman",serif; margin:0 0 10px; }
+  header p { max-width:720px; margin:0 auto; color:#e6dcf7; }
+  main { max-width:1180px; margin:0 auto; padding:24px; }
+  .legend { display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin:8px 0 22px; font-size:14px; color:var(--muted); }
+  .legend span.sw { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:6px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:18px; }
+  .tile { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 14px 16px; display:flex; flex-direction:column; }
+  .tile.top { border:2px solid var(--gold); }
+  .tile h3 { margin:2px 0 2px; font:600 17px/1.3 -apple-system,Helvetica,Arial,sans-serif; }
+  .tile .num { color:var(--gold); font-weight:700; margin-right:6px; }
+  .tile p { margin:6px 0 0; font-size:14px; color:#423d55; }
+  .badges { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .b { font:600 12px/1 -apple-system,Helvetica,Arial,sans-serif; padding:6px 9px; border-radius:999px; }
+  .g { background:var(--goodbg); color:var(--good); } .m { background:var(--midbg); color:var(--mid); } .r { background:var(--badbg); color:var(--bad); }
+  .verdict { margin-top:10px; font-size:13.5px; color:#3a3550; border-top:1px solid var(--line); padding-top:8px; }
+  .verdict b { color:var(--ink); }
+  svg { width:100%; height:auto; display:block; }
+  .rank { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 22px; margin:26px 0 8px; }
+  .rank h2 { margin:0 0 8px; font:400 24px/1.2 Georgia,serif; }
+  footer { text-align:center; color:var(--muted); font-size:13px; padding:24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fortune card handles: 10 concepts</h1>
+  <p>Each keeps what worked on card v1, two flat parallel faces on top for the gripper, but hides it in a shape that belongs on a fortune card. Front view on the left; side view on the right with the gripper fingers (teal) closing on the grip faces.</p>
+</header>
+<main>
+  <div class="legend">
+    <span><span class="sw" style="background:#c9a227"></span>printed handle / frame</span>
+    <span><span class="sw" style="background:#1d9e75"></span>gripper fingers</span>
+    <span><span class="sw" style="background:#f4c0d1"></span>grip faces</span>
+    <span id="codexNote">Codex feasibility review: <b>pending</b></span>
+  </div>
+  <div class="rank" id="rank" hidden></div>
+  <div class="grid" id="grid"></div>
+</main>
+<footer>MakerMods Physical AI Hacks · Robot Fortune Teller · card v3 handle study</footer>
+
+<script>window.CODEX = {"1": {"grasp": 2, "print": true, "risk": "Hollow centre: off-target fingers land on the horns, slip or snap them.", "fix": "Keep a solid grip band at least 20 mm wide (shallower cut-out)."}, "2": {"grasp": 3, "print": true, "risk": "Fingers landing on 4 mm rays bend them or miss the disc.", "fix": "Rays 12 mm thick, whole crown within 14 mm."}, "3": {"grasp": 5, "print": true, "top": 1, "risk": "Low height (14 mm) limits vertical error; corner contact if the wrist is twisted.", "fix": "Make the header 22 mm tall (18 mm straight + 4 mm lead-in)."}, "4": {"grasp": 4, "print": true, "top": 2, "risk": "Grabbing high hits the taper; a deep rose recess reduces contact.", "fix": "18 mm of straight sides below the pointed crown; keep the rose shallow."}, "5": {"grasp": 2, "print": true, "risk": "Narrow facets: edge contact, rotation and slip.", "fix": "Widen the grip facets to 30 mm."}, "6": {"grasp": 3, "print": true, "risk": "Round top narrows the contact; raised symbol gives point contact.", "fix": "No relief inside the grip area (flat faces)."}, "7": {"grasp": 2, "print": true, "risk": "Narrows quickly upward: a high grab misses or loads the tip.", "fix": "Truncate to a 20 mm wide top (trapezoid crown)."}, "8": {"grasp": 1, "print": true, "drop": true, "risk": "10 mm thick: won't fit the tray seats or the 6 mm stand slot.", "fix": "Only works with a new tray and stand: drop."}, "9": {"grasp": 1, "print": true, "drop": true, "risk": "Needs a sideways grab: tiny 4 mm edges and tray walls in the way.", "fix": "Not fixable for this setup: drop."}, "10": {"grasp": 4, "print": true, "top": 3, "risk": "A thin neck can snap; raised scrollwork rocks in the jaws.", "fix": "Neck at least 20 mm wide; keep the bow flat, no twist."}};
+window.CODEX_RANK = "<h2>Codex ranking</h2><p><b>1. Ornate header bar</b> (best tolerance: the fingers can close anywhere along 63 mm) \u00b7 <b>2. Gothic arch</b> \u00b7 <b>3. Antique key bow</b>. <b>Drop</b> the thick tile and side notches for this tray and stand.</p><p style=\"font-size:14px;color:#6b6578\">Scores are engineering estimates relative to card v1 (4 = the block that already worked). Codex also noted: the grip faces of neighbouring cards in the tray are only 0.4 to 2.4 mm apart, so the arm should always pick from the front seat (as designed), and the gripper's 96 mm stroke doesn't by itself guarantee centimetre tolerance: test the winner on the real arm before printing a deck.</p>";</script>
+<script>
+const BG = "#ffffff";
+const C = { gold:"#c9a227", goldDark:"#a87c14", cream:"#f7e7b4", sun:"#f6b21b", ink:"#2a2350", red:"#9c2b3a", redDark:"#6e1a26", grip:"#f4c0d1", finger:"#1d9e75" };
+
+// Front-view handle drawings, in a 220 × 300 tile; the card body is x 20..146, y 90..266 (2 px per mm).
+const concepts = [
+  { n:1, name:"Crescent moon crest", t:12, h:22, blurb:"A crescent moon sits on the card's top edge; its flat front and back are the grip faces.",
+    front:`<circle cx="83" cy="70" r="30" fill="${C.gold}"/><circle cx="83" cy="54" r="26" fill="${BG}"/>` },
+  { n:2, name:"Sun crown", t:14, h:12, blurb:"A half-sun with short blunt rays rises from the top; the thick central disc is the grip.",
+    front:`${[...Array(9)].map((_,i)=>{const a=Math.PI*(i/8);const x=83-Math.cos(a)*40,y=90-Math.sin(a)*40;const x1=83-Math.cos(a-0.12)*24,y1=90-Math.sin(a-0.12)*24,x2=83-Math.cos(a+0.12)*24,y2=90-Math.sin(a+0.12)*24;return `<polygon points="${x1},${y1} ${x},${y} ${x2},${y2}" fill="${C.gold}"/>`}).join("")}<path d="M59 90 A24 24 0 0 1 107 90 Z" fill="#e09a14"/>` },
+  { n:3, name:"Ornate header bar", t:12, h:14, blurb:"The whole top edge thickens into a header with the card's name engraved; the fingers can close anywhere along 63 mm.",
+    front:`<rect x="20" y="62" width="126" height="28" rx="5" fill="${C.gold}"/><rect x="26" y="67" width="114" height="18" rx="3" fill="none" stroke="${C.goldDark}" stroke-width="1.5"/><text x="83" y="80" text-anchor="middle" font-size="11" font-weight="700" fill="${C.ink}" letter-spacing="2">THE SUN</text>` },
+  { n:4, name:"Gothic arch tab", t:12, h:29, blurb:"A pointed cathedral-window tab with a recessed rose on the front.",
+    front:`<path d="M51 90 L51 66 Q51 44 83 32 Q115 44 115 66 L115 90 Z" fill="${C.gold}"/><circle cx="83" cy="66" r="13" fill="none" stroke="${C.goldDark}" stroke-width="2"/>${[0,45,90,135].map(a=>`<line x1="83" y1="53" x2="83" y2="79" stroke="${C.goldDark}" stroke-width="1.5" transform="rotate(${a} 83 66)"/>`).join("")}` },
+  { n:5, name:"Crystal gem", t:14, h:21, blurb:"A faceted gem stands on the top edge; two opposite facets are the grip faces.",
+    front:`<polygon points="65,90 61,66 73,48 93,48 105,66 101,90" fill="#7f77dd"/><polyline points="61,66 105,66" stroke="#534ab7" stroke-width="1.5" fill="none"/><polyline points="73,48 83,66 93,48" stroke="#534ab7" stroke-width="1.5" fill="none"/><polyline points="65,90 83,66 101,90" stroke="#534ab7" stroke-width="1.5" fill="none"/>` },
+  { n:6, name:"Wax seal medallion", t:12, h:30, blurb:"A round disc like a wax seal, embossed with the card's symbol.",
+    front:`<circle cx="83" cy="62" r="30" fill="${C.red}"/><circle cx="83" cy="62" r="22" fill="none" stroke="${C.redDark}" stroke-width="2"/><polygon points="83,46 87,57 99,58 90,65 93,77 83,70 73,77 76,65 67,58 79,57" fill="${C.redDark}"/>` },
+  { n:7, name:"All-seeing eye", t:12, h:25, blurb:"A blunt-tipped triangle with an engraved eye.",
+    front:`<polygon points="49,90 117,90 89,40 77,40" fill="${C.gold}"/><path d="M66 74 Q83 60 100 74 Q83 86 66 74 Z" fill="${BG}"/><circle cx="83" cy="73" r="5" fill="${C.ink}"/>` },
+  { n:8, name:"Thick tarot tile", t:0, h:0, tile:10, blurb:"No handle at all: the whole card is a 10 mm thick tile; the fingers close on its top edge.",
+    front:`<rect x="20" y="90" width="126" height="18" fill="${C.grip}" opacity=".85"/>` },
+  { n:9, name:"Side notches", t:0, h:0, side:true, blurb:"Grabbed across its 63 mm width: V notches in both side edges centre the fingers. The top stays clean.",
+    front:`<polygon points="20,100 30,110 20,120" fill="${BG}"/><polygon points="146,100 136,110 146,120" fill="${BG}"/><rect x="2" y="98" width="16" height="24" rx="3" fill="${C.finger}"/><rect x="148" y="98" width="16" height="24" rx="3" fill="${C.finger}"/>` },
+  { n:10, name:"Antique key bow", t:12, h:28, blurb:"The handle is the bow of an old key, as if the card unlocks your future.",
+    front:`<rect x="77" y="78" width="12" height="12" fill="${C.gold}"/><circle cx="83" cy="58" r="26" fill="${C.gold}"/><circle cx="83" cy="58" r="13" fill="${C.goldDark}"/><circle cx="83" cy="58" r="6" fill="${C.gold}"/>` },
+];
+
+function cardBody(c) {
+  return `<rect x="20" y="90" width="126" height="176" rx="6" fill="${C.gold}"/>
+    <rect x="26" y="96" width="114" height="146" rx="3" fill="${C.cream}"/>
+    <circle cx="83" cy="165" r="24" fill="${C.sun}"/>
+    ${[...Array(12)].map((_,i)=>`<line x1="83" y1="133" x2="83" y2="124" stroke="#ee9420" stroke-width="3" stroke-linecap="round" transform="rotate(${i*30} 83 165)"/>`).join("")}
+    <rect x="26" y="246" width="114" height="16" rx="2" fill="${C.ink}"/>
+    <text x="83" y="257" text-anchor="middle" font-size="9" fill="${C.cream}" letter-spacing="1.5">XIX · THE SUN</text>`;
+}
+
+function sideView(c) {
+  // Side profile: back face at x=176 (flush), thickness grows to the right. 2 px per mm.
+  const x0 = 176, body = (c.tile || 4) * 2;
+  let s = `<rect x="${x0}" y="90" width="${body}" height="176" fill="${C.goldDark}"/>`;
+  if (c.t) {
+    const w = c.t * 2, top = 90 - c.h * 2;
+    s += `<rect x="${x0}" y="${top}" width="${w}" height="${c.h * 2}" rx="2" fill="${C.gold}"/>`;
+    s += `<rect x="${x0 - 1}" y="${top + 4}" width="2" height="${c.h * 2 - 8}" fill="${C.grip}"/><rect x="${x0 + w - 1}" y="${top + 4}" width="2" height="${c.h * 2 - 8}" fill="${C.grip}"/>`;
+    const fy = Math.max(top + 2, 90 - 30);
+    s += `<rect x="${x0 - 16}" y="${fy}" width="14" height="24" rx="3" fill="${C.finger}"/><rect x="${x0 + w + 2}" y="${fy}" width="14" height="24" rx="3" fill="${C.finger}"/>`;
+    s += `<text x="${x0 + w / 2}" y="${top - 6}" text-anchor="middle" font-size="9" fill="#6b6578">${c.t} mm</text>`;
+  } else if (c.tile) {
+    s += `<rect x="${x0 - 16}" y="92" width="14" height="24" rx="3" fill="${C.finger}"/><rect x="${x0 + body + 2}" y="92" width="14" height="24" rx="3" fill="${C.finger}"/>`;
+    s += `<text x="${x0 + body / 2}" y="84" text-anchor="middle" font-size="9" fill="#6b6578">${c.tile} mm</text>`;
+  } else if (c.side) {
+    s += `<text x="${x0 + 4}" y="80" text-anchor="middle" font-size="9" fill="#6b6578">grip across width</text>`;
+  }
+  return s;
+}
+
+const grid = document.getElementById("grid");
+function render(verdicts = {}) {
+  grid.innerHTML = concepts.map(c => {
+    const v = verdicts[c.n];
+    const badges = v ? `<div class="badges">
+        <span class="b ${v.grasp >= 4 ? "g" : v.grasp >= 3 ? "m" : "r"}">Grip ${v.grasp}/5</span>
+        <span class="b ${v.print ? "g" : "r"}">${v.print ? "Prints flat, no supports" : "Needs supports"}</span>
+        ${v.top ? `<span class="b g">Codex top ${v.top}</span>` : ""}${v.drop ? `<span class="b r">Drop</span>` : ""}</div>
+        <div class="verdict"><b>Risk:</b> ${v.risk}<br><b>Fix:</b> ${v.fix}</div>` : "";
+    return `<div class="tile${v && v.top ? " top" : ""}">
+      <svg viewBox="0 0 220 280" role="img" aria-label="${c.name}">${cardBody(c)}${c.front}${sideView(c)}</svg>
+      <h3><span class="num">${c.n}</span>${c.name}</h3><p>${c.blurb}</p>${badges}</div>`;
+  }).join("");
+}
+render(window.CODEX || {});
+if (window.CODEX_RANK) {
+  const r = document.getElementById("rank"); r.hidden = false; r.innerHTML = window.CODEX_RANK;
+  document.getElementById("codexNote").innerHTML = "Codex feasibility review: <b>done</b>";
+}
+</script>
+</body>
+</html>
