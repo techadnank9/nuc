@@ -119,18 +119,40 @@ server = AgentServer()
 
 @server.rtc_session(agent_name="fortune-teller")
 async def fortune_teller(ctx: JobContext) -> None:
+    push_to_talk = os.environ.get("PUSH_TO_TALK", "1") == "1"
     session = AgentSession(
         llm=inference.RealtimeModel(
             model=os.environ.get("REALTIME_MODEL", "openai/gpt-realtime-2.1"),
             voice=os.environ.get("REALTIME_VOICE", "marin"),
+            # Push-to-talk: the page says exactly when the guest starts and stops; no guessing from silence.
+            **({"turn_detection": None} if push_to_talk else {}),
         ),
+        **({"turn_detection": "manual"} if push_to_talk else {}),
     )
     await session.start(
         agent=FortuneTeller(),
         room=ctx.room,
         room_options=room_io.RoomOptions(video_input=os.environ.get("AGENT_SEES_GUEST", "1") == "1"),
     )
-    await session.generate_reply(instructions="Welcome the guest warmly and ask their first name.")
+
+    if push_to_talk:
+        session.input.set_audio_enabled(False)
+
+        async def start_turn(_data) -> str:
+            session.interrupt()  # the guest talks over the Fortune Teller: she stops
+            session.clear_user_turn()
+            session.input.set_audio_enabled(True)
+            return "ok"
+
+        async def end_turn(_data) -> str:
+            session.input.set_audio_enabled(False)
+            session.commit_user_turn()
+            return "ok"
+
+        ctx.room.local_participant.register_rpc_method("start_turn", start_turn)
+        ctx.room.local_participant.register_rpc_method("end_turn", end_turn)
+
+    await session.generate_reply(instructions="Welcome the guest warmly and ask their first name and their question.")
 
 
 if __name__ == "__main__":

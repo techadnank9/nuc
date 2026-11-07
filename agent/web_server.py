@@ -22,6 +22,8 @@ from aiohttp import web
 from dotenv import load_dotenv
 from livekit import api
 
+import harness
+
 load_dotenv()
 HERE = Path(__file__).resolve().parent
 URL, KEY, SECRET = os.environ["LIVEKIT_URL"], os.environ["LIVEKIT_API_KEY"], os.environ["LIVEKIT_API_SECRET"]
@@ -77,6 +79,49 @@ async def robot_status(request: web.Request) -> web.Response:
         return web.json_response({"online": False, "enabled": CAMERAS})
 
 
+# ---- Direct commands to Dream-1 from the page (operator box) ----
+EVENTS: list[dict] = []
+COMMAND_LOCK = asyncio.Lock()
+
+
+def mode_info() -> dict:
+    mode = os.environ.get("DRAW_MODE", "manual")
+    live = mode == "robot" and os.environ.get("ROBOT_LIVE") == "1"
+    return {"mode": mode, "live": live}
+
+
+async def push_event(step: str, text: str) -> None:
+    EVENTS.append({"id": len(EVENTS), "step": step, "text": text})
+    del EVENTS[:-200]
+
+
+async def robot_command(request: web.Request) -> web.Response:
+    body = await request.json()
+    task = str(body.get("task", "")).strip()[:200]
+    if not task:
+        return web.json_response({"error": "Write what the arms should do first."}, status=400)
+    if COMMAND_LOCK.locked():
+        return web.json_response({"error": "A command is already running. Stop it or wait for it to finish."}, status=409)
+
+    async def run() -> None:
+        async with COMMAND_LOCK:
+            await harness.run_command(task, int(body.get("seconds", 30)), on_step=push_event)
+
+    asyncio.create_task(run())
+    return web.json_response({"started": True, **mode_info()})
+
+
+async def robot_stop(_: web.Request) -> web.Response:
+    await push_event("stop", "Stop pressed: stopping Dream-1 now")
+    await harness.stop_robot()
+    return web.json_response({"stopped": True})
+
+
+async def robot_events(request: web.Request) -> web.Response:
+    since = int(request.query.get("since", "-1"))
+    return web.json_response({"events": [e for e in EVENTS if e["id"] > since], "busy": COMMAND_LOCK.locked(), **mode_info()})
+
+
 async def start_cameras(app: web.Application) -> None:
     app["http"] = aiohttp.ClientSession()
     app["tunnel"] = None
@@ -114,6 +159,9 @@ def main() -> None:
     app.router.add_get("/token", token)
     app.router.add_get("/cam/{role}.jpg", cam)
     app.router.add_get("/robot/status", robot_status)
+    app.router.add_post("/robot/command", robot_command)
+    app.router.add_post("/robot/stop", robot_stop)
+    app.router.add_get("/robot/events", robot_events)
     app.on_startup.append(start_cameras)
     app.on_cleanup.append(stop_cameras)
     print(f"Fortune Teller web app on http://127.0.0.1:{PORT}  (agent '{AGENT_NAME}' must be running)")

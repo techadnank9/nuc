@@ -1,21 +1,20 @@
 # Fortune Teller page: design notes
 
-The page's job: let a guest (and the judges) **watch the robot's hands work** while the Fortune Teller talks. The arms' cameras are the hero; the guest's own camera is a small picture-in-picture.
+The page's job: a guest standing at the desk **talks to the Fortune Teller** and watches what the robot's hands are doing. The guest can already see the arms in person, so the cameras are compact; voice and the transcript are the centre, with live captions on the overhead camera and the robot action log beside it. An operator box sends direct commands to Dream-1.
 
 ## Layout
 
 ```
-┌ The Fortune Teller ──────────────── ● Robot ready  ● Voice   [Begin a reading] ┐
-│ ┌ Overhead camera (the stage) ───────────────┐  ┌ Your reading ─────────────┐ │
-│ │                          [you, small PiP]  │  │ Listening Question Drawing Reveal │
-│ │                                            │  ├ What the hands are doing ─┤ │
-│ └────────────────────────────────────────────┘  │ 14:02:11 ● Checking arms  │ │
-│ ┌ Left hand ───────────┐ ┌ Right hand ────────┐ │ 14:02:12 ● Dream-1 …      │ │
-│ └──────────────────────┘ └────────────────────┘ ├ Your card ────────────────┤ │
-│ ┌ Conversation (transcript, type box)         [mic] [cam] [camera ▾] [End] ┐ │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌ The Fortune Teller ──────────────────────────── ● Robot ready  ● Voice  [Begin a reading] ┐
+│ ┌ Cameras ─────────┐ ┌ Conversation ──────────────────────┐ ┌ Your reading ───────────┐ │
+│ │ Overhead [you]   │ │            ( big talk button )     │ │ Listening … Reveal      │ │
+│ │ Left | Right     │ │   Tap to talk, or hold (or space)  │ ├ Your card ──────────────┤ │
+│ ├ What the hands   │ │ Transcript (tall, timestamped)     │ │                         │ │
+│ │ are doing (log)  │ │ [Or type your question]  [Send]    │ ├ Command the arms ───────┤ │
+│ └──────────────────┘ │ [cam] [camera ▾] [End reading]     │ │ presets, task, Stop     │ │
+│                      └────────────────────────────────────┘ └─────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
-
 - **Robot cameras** come from the station through `station_cam_relay.py`. When idle they are the cameras themselves; during a draw they show **what Dream-1 sees** (frames read from `dreamcli robot run --view`), labelled as such.
 - **What the hands are doing** is a live log of every robot step (checks, Dream-1 running, each Dream-1 round trip with its time, stopping, reading the card) sent by the harness through the agent.
 
@@ -37,8 +36,8 @@ Type: **IM Fell DW Pica** (an old printing face, like real tarot decks) for the 
 | Law | How the page applies it |
 |---|---|
 | **Jakob's law** (people expect your page to work like others they know) | Video-call conventions: round mic and camera toggles at the bottom right, a red End button, chat transcript with a type box, a camera picker, picture-in-picture self view. |
-| **Fitts's law** (big, close targets are faster) | 56 px round mic/camera buttons next to the type box; the 44 px primary button sits top right where the eye starts; all controls at least 44 px high. |
-| **Hick's law** (fewer choices, faster decisions) | One primary action per state: *Begin a reading* → (reading) mic / type / End → *New reading*. Everything else is disabled until it can be used. |
+| **Fitts's law** (big, close targets are faster) | A 128 px talk button at the top of the centre column (tap, hold, or hold the space bar); the 44 px primary button sits top right; all controls at least 44 px high. |
+| **Hick's law** (fewer choices, faster decisions) | One primary action per state: *Begin a reading* → talk / type / End → *New reading*. The command box offers four presets instead of a blank field. |
 | **Miller's law** (about 7 items in working memory) | The action log keeps the latest 7 entries fully visible; older ones fade. The progress track has only 4 steps. |
 | **Doherty threshold** (respond under 400 ms) | Robot cameras refresh every ~140 ms; status pills and the log update the moment an event arrives; typed messages appear instantly before the agent answers. |
 | **Aesthetic-usability effect** (beautiful feels easier) | One cohesive booth theme: brass frames, antique type, a real card that flips. |

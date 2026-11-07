@@ -88,9 +88,9 @@ async def relay(action: str) -> None:
     await _sh(SSH + [f"curl -s -m 8 -X POST 127.0.0.1:8097/{action} >/dev/null 2>&1 || true"], 20)
 
 
-async def run_policy(dry: bool) -> tuple[int, str]:
-    """Start Dream-1 on the station and stop it with SIGINT after BUDGET_S (dreamcli then homes and releases)."""
-    cmd = ["dreamcli", "robot", "run", "--task", TASK]
+async def run_policy(dry: bool, task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str]:
+    """Start Dream-1 on the station and stop it with SIGINT after `budget` s (dreamcli then homes and releases)."""
+    cmd = ["dreamcli", "robot", "run", "--task", task]
     if CHECKPOINT:
         cmd += ["--checkpoint", CHECKPOINT]
     if ACTION_SPACE:
@@ -100,10 +100,45 @@ async def run_policy(dry: bool) -> tuple[int, str]:
     cmd.append("--view")  # dreamcli's own page on 127.0.0.1:8093: the relay mirrors its frames to the web app
     remote = (
         "source ~/dream-env/bin/activate && cd ~/physical-ai-hacks && "
-        f"timeout -s INT {BUDGET_S} {shlex.join(cmd)}"
+        f"timeout -s INT {budget} {shlex.join(cmd)}"
     )
     # timeout's SIGINT is dreamcli's normal stop; exit 124 just means the budget ran out, which is expected.
-    return await _sh(SSH + [remote], BUDGET_S + 60)
+    return await _sh(SSH + [remote], budget + 60)
+
+
+async def stop_robot() -> None:
+    """Stop a running Dream-1 run now: SIGINT is dreamcli's normal stop (arms go home, switch off, go limp)."""
+    await _sh(SSH + ["pkill -INT -f 'bin/dreamcli robot run' || true"], 15)
+
+
+async def run_command(task: str, seconds: int = 30, mode: str | None = None, on_step=None) -> dict:
+    """Run Dream-1 on any task typed by the operator (no card logic). Same safety gates as draw_card()."""
+    on_step = on_step or _noop
+    mode = mode or os.environ.get("DRAW_MODE", "manual")
+    live = mode == "robot"
+    seconds = max(30, min(int(seconds), 120))  # dreamcli needs ~10-20 s to start before Dream-1 answers
+    if mode == "manual":
+        await on_step("failed", "The server runs without the robot (DRAW_MODE=manual): start it with DRAW_MODE=robot-dry or robot")
+        return {"ok": False, "error": "no robot in manual mode"}
+    await on_step("check", f'Command for Dream-1: "{task}"')
+    if live and os.environ.get("ROBOT_LIVE") != "1":
+        await on_step("failed", "Live mode needs ROBOT_LIVE=1, set by the person at the e-stop")
+        return {"ok": False, "error": "ROBOT_LIVE not set"}
+    if reason := await preflight():
+        await on_step("failed", reason)
+        return {"ok": False, "error": reason}
+    await on_step("release", "Handing the cameras to Dream-1")
+    await relay("release")
+    try:
+        await on_step("policy", (f"Arms moving home, then Dream-1 runs for {seconds} s" if live
+                                 else f"Dream-1 dry run for {seconds} s: nothing is sent to the arms"))
+        code, out = await run_policy(dry=not live, task=task, budget=seconds)
+        await on_step("stop", "Dream-1 stopped: arms return home and switch off")
+    finally:
+        await relay("resume")
+    ok = code in (0, 124, 130)
+    await on_step("done" if ok else "failed", "Command finished" if ok else f"dreamcli exited {code}: {out.strip()[-200:]}")
+    return {"ok": ok}
 
 
 def _log(row: dict) -> None:
