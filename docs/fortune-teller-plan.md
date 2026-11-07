@@ -80,7 +80,7 @@ Mount the tray and stand to the table (tape or clamps). If they move, the model'
 3. Queue for real (costs credits, $200 at last check: confirm with the organizers first).
 4. Training takes **7 to 8 hours**, plus queue time, plus up to an hour for the first start.
 
-**Queue it by 9 pm tonight**, so the model is ready by early morning.
+**Queue it by 10 pm tonight** (demos run 6 to 9:30 pm), so the model is ready by early morning.
 
 ## Harness (code)
 
@@ -103,13 +103,12 @@ Mount the tray and stand to the table (tape or clamps). If they move, the model'
 
 | When | Who | What |
 |---|---|---|
-| **Sat Nov 7, now to 3 pm** | Arms | Switch the kit config to YAM; dry run; first teleop with the Quest |
-| | Hardware | Model card v2, deck tray, reveal stand; send to print; print stickers |
-| | Voice | LiveKit agent skeleton, prompt, card table |
-| **3 pm to 7 pm** | Arms | Fit tray + stand on the table; collect 50 to 60 demos |
-| | Voice | `draw_card()` tool with a manual stub; full conversation working |
-| **7 pm to 9 pm** | Arms | Check dataset, add_eef, `--check`, **queue the fine-tune** |
+| **Sat Nov 7, now to 6 pm** | Arms | Switch the kit config to YAM; teleop practice with the Quest on the v1 card; get the slow-first-chunk crash fixed with Dream Labs |
+| | Hardware | Print card v2 deck, deck tray, reveal stand; print stickers; tape the tray + stand spots |
+| | Voice | Test run of the full conversation (`DRAW_MODE=manual`), then `robot-dry` |
+| **6 pm to 9:30 pm** | Arms | Fit tray + stand on the table; **collect 50 to 60 demos** (hard stop 9:30) |
 | | All | Harness: run base Dream-1 through the whole loop as a dry run |
+| **9:30 pm to 10 pm** | Arms | Check dataset, add_eef, `--check`, **queue the fine-tune by 10 pm** (7 to 8 h of training: ready about 6 am) |
 | **Overnight** | | Model trains |
 | **Sun Nov 8 morning** | Arms | First live runs with the fine-tune; measure success rate over 10 tries |
 | | All | Join voice + harness + arm; tune the action budget |
