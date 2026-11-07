@@ -77,7 +77,35 @@ async def _sh(args: list[str], timeout: float) -> tuple[int, str]:
 
 
 async def preflight() -> str | None:
-    """Return a reason the robot cannot draw right now, or None if it can."""
+    """Return a reason the robot cannot draw right now, or None if it can.
+
+    If a previous Dream-1 run is still shutting down (homing, switching off), wait up to 25 s for it first.
+    """
+    for _ in range(25):
+        code, _out = await _sh(SSH + ["pgrep -f 'bin/dreamcli robot run' >/dev/null"], 10)
+        if code != 0:
+            break
+        await asyncio.sleep(1)
+    return await _preflight_once()
+
+
+def explain(out: str) -> str:
+    """Turn dreamcli's last lines into what the operator should do."""
+    if "USB 2" in out or "too slow for" in out:
+        cam = "right wrist" if "260322272283" in out else "left wrist" if "262122273310" in out else "overhead" if "261922273680" in out else "a"
+        return (f"The {cam} camera is connected at slow USB 2 speed. Unplug it and plug it firmly into a blue USB 3 port, "
+                "and give its cable slack so the arm cannot pull it.")
+    if "did not open" in out:
+        return "A camera did not open: check its USB cable is plugged in firmly, then try again."
+    if "held by dreamcli" in out:
+        return "The previous run was still shutting down: wait a few seconds and send again."
+    if "file descriptor cannot be a negative integer" in out or "CanOperationError" in out:
+        return ("The run lost a device mid-motion (usually a camera or CAN cable unplugged by the arm's movement). "
+                "Check the cables on the arm, then try again.")
+    return "dreamcli stopped with an error: " + out.strip()[-200:]
+
+
+async def _preflight_once() -> str | None:
     code, out = await _sh(
         SSH
         + [
@@ -163,7 +191,7 @@ async def run_command(task: str, seconds: int = 30, mode: str | None = None, on_
     finally:
         await relay("resume")
     ok = code in (0, 124, 130)
-    await on_step("done" if ok else "failed", "Command finished" if ok else f"dreamcli exited {code}: {out.strip()[-200:]}")
+    await on_step("done" if ok else "failed", "Command finished" if ok else explain(out))
     return {"ok": ok}
 
 
@@ -219,7 +247,7 @@ async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
                     code, out = await run_policy(dry=not live)
                     await on_step("stop", "Stopping Dream-1: arms return home and switch off")
                     if code not in (0, 124, 130):
-                        result = {"ok": False, "error": f"dreamcli exited {code}: {out.strip()[-300:]}"}
+                        result = {"ok": False, "error": explain(out)}
                     else:
                         await on_step("read", "Reading the card's tag from the overhead camera")
                         result = await read_card()
