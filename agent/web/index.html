@@ -201,8 +201,8 @@
       <div class="lines" id="lines" aria-live="polite"><div class="line sys">Press Begin a reading, then allow your microphone and camera.</div></div>
       <form class="compose" id="compose">
         <label class="sr" for="text">Message</label>
-        <input id="text" placeholder="Or type your question here" autocomplete="off" disabled>
-        <button class="ghost" id="sendBtn" disabled>Send</button>
+        <input id="text" placeholder="Or type your question here" autocomplete="off">
+        <button class="ghost" id="sendBtn">Send</button>
       </form>
     </div>
     <div class="ctl">
@@ -425,7 +425,7 @@ async function begin() {
       await setCamera(true);
     } catch { camOn = false; $("camBtn").className = "round off"; }
 
-    ["camBtn","camSelect","text","sendBtn"].forEach(id => $(id).disabled = false);
+    ["camBtn","camSelect"].forEach(id => $(id).disabled = false);
     $("startBtn").hidden = true; $("endBtn").hidden = false; voice("busy", "Waking up");
   } catch (e) {
     line("sys", "Could not start the reading: " + e.message + ". Check the page server and agent are running, then try again.");
@@ -437,7 +437,7 @@ async function finish(fromEvent = false) {
   if (room && !fromEvent) await room.disconnect();
   room = null; micOn = false; $("micBtn").classList.remove("live"); $("micHint").innerHTML = "<b>Tap to start talking</b>";
   $("pip").classList.add("off"); $("fOverhead").classList.remove("drawing");
-  ["camBtn","camSelect","text","sendBtn"].forEach(id => $(id).disabled = true);
+  ["camBtn","camSelect"].forEach(id => $(id).disabled = true);
   $("startBtn").hidden = false; $("endBtn").hidden = true; voice("", "Voice");
   line("sys", "The reading has ended.");
 }
@@ -523,9 +523,18 @@ setInterval(() => {
 }, 80);
 $("camBtn").onclick = () => setCamera(!camOn);
 $("camSelect").onchange = () => { if (room && camOn) setCamera(true); };
+async function waitForTeller(ms = 15000) {
+  const t0 = Date.now();
+  while (room && room.remoteParticipants.size === 0 && Date.now() - t0 < ms) await new Promise(r => setTimeout(r, 250));
+  return !!room && room.remoteParticipants.size > 0;
+}
 $("compose").onsubmit = async (e) => {
-  e.preventDefault(); const text = $("text").value.trim(); if (!text || !room) return;
-  $("text").value = ""; line("guest", text); if (!asked) { asked = true; progress("ask"); }
+  e.preventDefault(); const text = $("text").value.trim(); if (!text) return;
+  $("text").value = "";
+  if (!room) await begin();                         /* typing first also starts the reading */
+  if (!room) { $("text").value = text; return; }
+  line("guest", text); if (!asked) { asked = true; progress("ask"); }
+  if (!(await waitForTeller())) { line("sys", "The Fortune Teller has not joined yet. Check the agent is running, then send again."); return; }
   await room.localParticipant.sendText(text, { topic: "lk.chat" });
 };
 </script>
