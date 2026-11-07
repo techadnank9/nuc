@@ -379,6 +379,8 @@ async function setCamera(on) {
 }
 
 async function begin() {
+  /* every reading starts live: re-arm live mode if someone turned it off (no-op without the robot) */
+  fetch("/robot/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ live: true, quiet: true }) }).catch(() => {});
   $("startBtn").hidden = true; voice("busy", "Connecting");
   $("lines").innerHTML = ""; bubbles.clear(); asked = false; resetCard(); progress("listen");
   try {
@@ -493,7 +495,7 @@ async function pollEvents() {
     const m = $("cmdMode"), lb = $("liveBtn");
     m.className = "mode" + (d.live ? " live" : "");
     const mins = Math.ceil((d.live_left_s || 0) / 60);
-    m.textContent = d.live ? `Live: the arms will move. Keep a hand on the emergency stop. Switches back to dry run in ${mins} min.`
+    m.textContent = d.live ? "Live: the arms will move. Keep a hand on the emergency stop."
       : d.robot ? "Dry run: Dream-1 runs, the arms do not move."
       : "No robot connected (server started with DRAW_MODE=manual): commands are refused.";
     lb.disabled = !d.robot || d.busy;
@@ -523,7 +525,7 @@ $("cmdText").addEventListener("input", () => $("cmdErr").textContent = "");
 $("cmdStop").onclick = async () => { await fetch("/robot/stop", { method: "POST" }); };
 $("liveBtn").onclick = async () => {
   const turningOn = !$("liveBtn").classList.contains("on");
-  if (turningOn && !confirm("Turn on live mode?\n\nThe arms will really move on the next command or voice draw.\n\n- Your hand is on the emergency stop\n- Nobody is within reach of the arms\n\nLive mode switches itself off after 15 minutes.")) return;
+  if (turningOn && !confirm("Turn on live mode?\n\nThe arms will really move on the next command or voice draw.\n\n- Your hand is on the emergency stop\n- Nobody is within reach of the arms")) return;
   const r = await fetch("/robot/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ live: turningOn }) });
   if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "Could not change the mode.";
 };

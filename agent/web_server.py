@@ -98,11 +98,13 @@ def mode_info() -> dict:
 
 async def robot_mode(request: web.Request) -> web.Response:
     body = await request.json()
-    result = harness.set_live(bool(body.get("live")))
+    result = harness.set_live(bool(body.get("live")), minutes=12 * 60)  # on = for the whole session
     if "error" in result:
         return web.json_response(result, status=400)
+    if body.get("quiet") and result["live"]:
+        return web.json_response(mode_info())  # a new reading re-arming live mode: no log line needed
     await push_event("ok" if not result["live"] else "run",
-                     f"Live mode ON for {harness.LIVE_MINUTES} min: the arms will move" if result["live"]
+                     "Live mode ON: the arms will move" if result["live"]
                      else "Live mode OFF: dry runs only, the arms will not move")
     return web.json_response(mode_info())
 
@@ -143,7 +145,7 @@ async def start_cameras(app: web.Application) -> None:
     if os.environ.get("DRAW_MODE", "manual") != "manual":
         # LIVE_DEFAULT=1 (set by start_web.sh, run by the person at the desk): start live, for the whole session.
         # Otherwise every start is a dry run until the operator presses the live button.
-        if os.environ.get("LIVE_DEFAULT") == "1":
+        if os.environ.get("LIVE_DEFAULT", "1") == "1":
             harness.set_live(True, minutes=12 * 60)
             await push_event("run", "Live mode ON (started live): the arms will move. Press the button to turn it off.")
         else:
