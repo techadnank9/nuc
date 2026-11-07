@@ -55,11 +55,11 @@ def current_mode() -> tuple[str, bool]:
     return mode, live_env
 
 
-def set_live(on: bool) -> dict:
-    """Turn live mode on (for LIVE_MINUTES) or off. Refused when the server runs without the robot."""
+def set_live(on: bool, minutes: float = LIVE_MINUTES) -> dict:
+    """Turn live mode on (for `minutes`) or off. Refused when the server runs without the robot."""
     if os.environ.get("DRAW_MODE", "manual") == "manual":
         return {"error": "This server was started without the robot (DRAW_MODE=manual)."}
-    MODE_FILE.write_text(json.dumps({"live": on, "until": time.time() + LIVE_MINUTES * 60 if on else 0}))
+    MODE_FILE.write_text(json.dumps({"live": on, "until": time.time() + minutes * 60 if on else 0}))
     mode, live = current_mode()
     return {"mode": mode, "live": live}
 REMOTE_READER = "/tmp/station_read_card.py"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Start the Fortune Teller: the voice agent and the web page together. Ctrl+C stops both.
 #
-#   ./start_web.sh                       # robot connected, dry run; press "Turn on live mode" in the page to move the arms
+#   ./start_web.sh                       # robot connected, LIVE by default: the arms move (hand on the e-stop)
+#   LIVE_DEFAULT=0 ./start_web.sh        # robot connected, dry run until you press "Turn on live mode"
 #   DRAW_MODE=manual ./start_web.sh      # no robot at all: random cards (test the page anywhere)
 #
 # Then open http://127.0.0.1:8765 in Chrome or Safari (not an embedded browser: it needs the mic).
@@ -9,6 +10,7 @@
 # (stop this script before using run.sh or the teleop dashboard, which need the cameras).
 set -euo pipefail
 export DRAW_MODE="${DRAW_MODE:-robot-dry}"
+export LIVE_DEFAULT="${LIVE_DEFAULT:-1}"
 cd "$(dirname "$0")"
 trap 'kill 0' EXIT
 uv run agent.py dev &

@@ -141,7 +141,13 @@ async def robot_events(request: web.Request) -> web.Response:
 
 async def start_cameras(app: web.Application) -> None:
     if os.environ.get("DRAW_MODE", "manual") != "manual":
-        harness.set_live(False)  # every start is a dry run until the operator presses the live button
+        # LIVE_DEFAULT=1 (set by start_web.sh, run by the person at the desk): start live, for the whole session.
+        # Otherwise every start is a dry run until the operator presses the live button.
+        if os.environ.get("LIVE_DEFAULT") == "1":
+            harness.set_live(True, minutes=12 * 60)
+            await push_event("run", "Live mode ON (started live): the arms will move. Press the button to turn it off.")
+        else:
+            harness.set_live(False)
     app["http"] = aiohttp.ClientSession()
     app["tunnel"] = None
     if not CAMERAS:
