@@ -1,5 +1,0 @@
-t,mode,ok,card_id,seconds,note
-13:13:45,manual,True,10,3.0,
-13:13:46,robot-dry,False,,0.4,"another program holds the arms: 36170 bash -lc ~/dream-env/bin/dreamcli setup --host 127.0.0.1 --no-browser; exec bash
-36237 /home/pah/dream-env/bin/python /home/pah/dream-env/bin/dreamcli setup --host 127.0.0.1 --no-browser"
-13:13:46,robot,False,,0.0,"live mode needs ROBOT_LIVE=1, set by the person at the e-stop"
