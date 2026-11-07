@@ -387,7 +387,9 @@ async function begin() {
     room = new Room({ adaptiveStream: true, dynacast: true });
 
     room.registerTextStreamHandler("lk.transcription", async (reader, from) => {
-      const id = reader.info.id, track = reader.info.attributes?.["lk.transcribed_track_id"];
+      // Interim and final versions of one utterance arrive as separate streams sharing lk.segment_id:
+      // key the bubble by segment so each update replaces the text instead of adding a new bubble.
+      const id = reader.info.attributes?.["lk.segment_id"] || reader.info.id, track = reader.info.attributes?.["lk.transcribed_track_id"];
       const guest = (guestMicSid && track === guestMicSid) || from.identity === room.localParticipant.identity;
       let text = ""; for await (const chunk of reader) { text += chunk; line(guest ? "guest" : "teller", text, id); }
       if (guest && !asked) { asked = true; progress("ask"); }
