@@ -26,7 +26,7 @@ async def run(turns: list[str], fail_first: bool) -> None:
     if fail_first:
         outcomes = iter([{"ok": False, "card_id": None, "seen": []}])
 
-        async def flaky():
+        async def flaky(**_):
             try:
                 return next(outcomes)
             except StopIteration:

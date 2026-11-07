@@ -91,7 +91,10 @@ class FortuneTeller(Agent):
             self.attempts += 1
             await announce({"state": "drawing", "attempt": self.attempts})
             try:
-                result = await robot_draw()
+                async def step(name: str, text: str) -> None:
+                    await announce({"state": "step", "step": name, "text": text})
+
+                result = await robot_draw(on_step=step)
             except Exception as e:  # never let a robot error crash the conversation
                 result = {"ok": False, "error": f"harness error: {e}"}
         if result.get("ok"):

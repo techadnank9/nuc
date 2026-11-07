@@ -6,6 +6,8 @@
 #   DRAW_MODE=robot ROBOT_LIVE=1 ./start_web.sh        # LIVE: arms move (hand on the e-stop)
 #
 # Then open http://127.0.0.1:8765 in Chrome or Safari (not an embedded browser: it needs the mic).
+# The page also shows the robot's three cameras: the server starts a camera relay on the station while it runs
+# (stop this script before using run.sh or the teleop dashboard, which need the cameras).
 set -euo pipefail
 cd "$(dirname "$0")"
 trap 'kill 0' EXIT

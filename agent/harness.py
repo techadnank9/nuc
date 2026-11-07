@@ -83,6 +83,11 @@ async def read_card() -> dict:
     return {"ok": bool(known), "card_id": known[0] if known else None, "seen": result.get("ids", [])}
 
 
+async def relay(action: str) -> None:
+    """Tell the station's camera relay (station_cam_relay.py) to release or retake the cameras; no-op if it is not running."""
+    await _sh(SSH + [f"curl -s -m 8 -X POST 127.0.0.1:8097/{action} >/dev/null 2>&1 || true"], 20)
+
+
 async def run_policy(dry: bool) -> tuple[int, str]:
     """Start Dream-1 on the station and stop it with SIGINT after BUDGET_S (dreamcli then homes and releases)."""
     cmd = ["dreamcli", "robot", "run", "--task", TASK]
@@ -92,6 +97,7 @@ async def run_policy(dry: bool) -> tuple[int, str]:
         cmd += ["--action-space", ACTION_SPACE]
     if dry:
         cmd.append("--dry-run")
+    cmd.append("--view")  # dreamcli's own page on 127.0.0.1:8093: the relay mirrors its frames to the web app
     remote = (
         "source ~/dream-env/bin/activate && cd ~/physical-ai-hacks && "
         f"timeout -s INT {BUDGET_S} {shlex.join(cmd)}"
@@ -109,29 +115,60 @@ def _log(row: dict) -> None:
         w.writerow({k: row.get(k, "") for k in w.fieldnames})
 
 
-async def draw_card(mode: str | None = None) -> dict:
+async def _noop(step: str, text: str) -> None:
+    pass
+
+
+async def draw_card(mode: str | None = None, on_step=_noop) -> dict:
+    """Draw one card. on_step(step, text) is awaited at each stage, for the web page's action log.
+
+    Steps, in order: check, stand, release, policy, stop, read, done (or failed).
+    """
     mode = mode or os.environ.get("DRAW_MODE", "manual")
     t0 = time.time()
     if mode == "manual":
-        await asyncio.sleep(3)
+        for step, text, wait in [
+            ("check", "Checking the arms are free and both links are up", 0.6),
+            ("stand", "Checking the reveal stand is empty", 0.6),
+            ("policy", "Dream-1 drawing: reach, grip the handle, lift, place (simulated)", 2.4),
+            ("read", "Reading the card's tag from the overhead camera", 0.6),
+        ]:
+            await on_step(step, text)
+            await asyncio.sleep(wait)
         result = {"ok": True, "card_id": random.choice(list(CARDS))}
     elif mode in ("robot", "robot-dry"):
-        if mode == "robot" and os.environ.get("ROBOT_LIVE") != "1":
+        live = mode == "robot"
+        await on_step("check", "Checking the arms are free and both links are up")
+        if live and os.environ.get("ROBOT_LIVE") != "1":
             result = {"ok": False, "error": "live mode needs ROBOT_LIVE=1, set by the person at the e-stop"}
         elif reason := await preflight():
             result = {"ok": False, "error": reason}
-        elif (before := await read_card()).get("seen"):
-            # The stand must be empty before a draw, or an old card would count as this draw's success.
-            result = {"ok": False, "error": f"the stand is not empty (tags {before['seen']}): clear it first"}
         else:
-            code, out = await run_policy(dry=(mode == "robot-dry"))
-            if code not in (0, 124, 130):
-                result = {"ok": False, "error": f"dreamcli exited {code}: {out.strip()[-300:]}"}
-            else:
-                result = await read_card()
+            await on_step("release", "Handing the cameras to Dream-1")
+            await relay("release")
+            try:
+                await on_step("stand", "Checking the reveal stand is empty")
+                if (before := await read_card()).get("seen"):
+                    # The stand must be empty before a draw, or an old card would count as this draw's success.
+                    result = {"ok": False, "error": f"the stand is not empty (tags {before['seen']}): clear it first"}
+                else:
+                    await on_step("policy", ("Arms moving home, then Dream-1 draws the card" if live
+                                             else "Dream-1 running as a dry run: nothing is sent to the arms")
+                                  + f" ({BUDGET_S} s)")
+                    code, out = await run_policy(dry=not live)
+                    await on_step("stop", "Stopping Dream-1: arms return home and switch off")
+                    if code not in (0, 124, 130):
+                        result = {"ok": False, "error": f"dreamcli exited {code}: {out.strip()[-300:]}"}
+                    else:
+                        await on_step("read", "Reading the card's tag from the overhead camera")
+                        result = await read_card()
+            finally:
+                await relay("resume")
     else:
         result = {"ok": False, "error": f"unknown DRAW_MODE {mode!r}"}
     result["seconds"] = round(time.time() - t0, 1)
+    await on_step("done" if result.get("ok") else "failed",
+                  f"Card drawn in {result['seconds']} s" if result.get("ok") else str(result.get("error") or "No card reached the stand"))
     _log({"t": time.strftime("%H:%M:%S"), "mode": mode, "note": result.get("error", ""), **result})
     return result
 
