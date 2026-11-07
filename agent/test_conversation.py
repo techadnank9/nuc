@@ -47,7 +47,7 @@ async def run(turns: list[str], fail_first: bool) -> None:
                 elif kind == "FunctionCallOutput":
                     print(f"  [tool result] {item.output}")
                 elif kind == "ChatMessage" and item.role == "assistant":
-                    print(f"MADAME DREAM: {item.text_content}")
+                    print(f"FORTUNE TELLER: {item.text_content}")
 
 
 async def main() -> None:

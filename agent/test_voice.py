@@ -70,7 +70,7 @@ async def main() -> None:
         async def read() -> None:
             text = await reader.read_all()
             if text.strip() and reader.info.attributes.get("lk.transcription_final", "true") == "true":
-                transcripts.append(f"{'GUEST' if who == 'guest' else 'MADAME DREAM'}: {text.strip()}")
+                transcripts.append(f"{'GUEST' if who == 'guest' else 'FORTUNE TELLER'}: {text.strip()}")
         asyncio.ensure_future(read())
 
     room.register_text_stream_handler("lk.transcription", on_text)

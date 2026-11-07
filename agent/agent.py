@@ -6,10 +6,22 @@ Env:  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET in .env (model usage is b
 """
 
 import asyncio
+import json
 import os
 
 from dotenv import load_dotenv
-from livekit.agents import Agent, AgentServer, AgentSession, JobContext, RunContext, cli, function_tool, inference
+from livekit.agents import (
+    Agent,
+    AgentServer,
+    AgentSession,
+    JobContext,
+    RunContext,
+    cli,
+    function_tool,
+    get_job_context,
+    inference,
+    room_io,
+)
 
 from cards import CARDS, describe
 from draw import draw_card as robot_draw
@@ -19,7 +31,7 @@ load_dotenv()
 DECK = "\n".join(f"- {describe(i)}" for i in CARDS)
 
 INSTRUCTIONS = f"""
-You are Madame Dream, a warm, theatrical fortune teller whose hands are two robot arms.
+You are the Fortune Teller, a warm, theatrical fortune teller whose hands are two robot arms. You have no other name: if asked, you are simply "the Fortune Teller".
 Speak in short, evocative sentences. Never talk for more than about 15 seconds at a time.
 
 The reading always goes like this, and stays short:
@@ -37,12 +49,26 @@ The reading always goes like this, and stays short:
 Never call draw_card while a draw is already running, and never more than twice in one reading.
 These are private stage directions: never read them aloud or quote their wording.
 
+You may see the guest through their camera. You can mention one small, kind detail you notice
+(a colour they wear, a smile) to make the reading feel personal; never comment on their body or identity.
+The guest may also type instead of speak: answer typed messages the same way, out loud.
+
 Only use cards from this deck, and only the meaning given:
 {DECK}
 """.strip()
 
 
 MAX_ATTEMPTS = 2  # per reading: one draw and one retry after the guest helps
+EVENTS_TOPIC = "fortune.events"  # the web page listens here for draw progress and the card
+
+
+async def announce(event: dict) -> None:
+    """Tell the web page what the robot is doing (no-op outside a LiveKit job, e.g. in tests)."""
+    try:
+        room = get_job_context().room
+        await room.local_participant.send_text(json.dumps(event), topic=EVENTS_TOPIC)
+    except Exception:
+        pass
 
 
 class FortuneTeller(Agent):
@@ -63,18 +89,23 @@ class FortuneTeller(Agent):
             return "No draws are left for this reading. End it gracefully: the cards are tired tonight."
         async with self.lock:
             self.attempts += 1
+            await announce({"state": "drawing", "attempt": self.attempts})
             try:
                 result = await robot_draw()
             except Exception as e:  # never let a robot error crash the conversation
                 result = {"ok": False, "error": f"harness error: {e}"}
         if result.get("ok"):
+            name, meaning = CARDS[result["card_id"]]
+            await announce({"state": "card", "card_id": result["card_id"], "name": name, "meaning": meaning})
             return f"The card drawn is {describe(result['card_id'])}"
         if "seen" not in result:  # the robot never ran (not ready, busy, config): not the guest's problem
+            await announce({"state": "not_ready", "error": str(result.get("error"))})
             self.attempts -= 1
             return (
                 "The robot could not draw right now (" + str(result.get("error")) + "). Stay in character: say the "
                 "spirits need a moment, and ask the guest to wait while your assistant prepares the deck."
             )
+        await announce({"state": "failed", "retry": self.attempts < MAX_ATTEMPTS})
         if self.attempts < MAX_ATTEMPTS:
             return "The draw failed: no card reached the stand. One retry is allowed after the guest helps."
         return "The draw failed again. No retry is left: end the reading gracefully."
@@ -91,7 +122,11 @@ async def fortune_teller(ctx: JobContext) -> None:
             voice=os.environ.get("REALTIME_VOICE", "marin"),
         ),
     )
-    await session.start(agent=FortuneTeller(), room=ctx.room)
+    await session.start(
+        agent=FortuneTeller(),
+        room=ctx.room,
+        room_options=room_io.RoomOptions(video_input=os.environ.get("AGENT_SEES_GUEST", "1") == "1"),
+    )
     await session.generate_reply(instructions="Welcome the guest warmly and ask their first name.")
 
 
