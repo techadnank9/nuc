@@ -6,8 +6,8 @@
   page can show the arms' three cameras live; during a draw the relay shows what Dream-1 sees.
   On stop, it ends the relay so other programs (run.sh, the teleop dashboard) can use the cameras again.
 
-Run (from agent/, with the agent running too: see start_web.sh):
-    uv run python web_server.py            # then open http://127.0.0.1:8765
+Run: always with ./start_web.sh (from agent/), which starts this server and the agent together,
+connected to the robot and in live mode; then open http://127.0.0.1:8765.
 Env: ROBOT_HOST (default pah@10.103.0.133), ROBOT_CAMERAS=0 to skip the station cameras.
 """
 

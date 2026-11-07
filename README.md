@@ -6,10 +6,22 @@ and it reads your fortune. Plan, timeline and roles: [docs/fortune-teller-plan.m
 
 | Folder | What |
 |---|---|
-| `agent/` | Voice agent, web app and robot harness. Start with `agent/start_web.sh` (see its header). |
+| `agent/` | Voice agent, web app and robot harness. **Always start it with `agent/start_web.sh`** (agent + web page + robot cameras, live by default; see its header). |
 | `cards/` | Card, deck tray and reveal stand: generators, checks, STL/3MF files. |
 | `docs/` | Build plan and explainer pages. |
 | `run.sh` | Run Dream-1 on the station by hand (below). |
+
+## Start the Fortune Teller
+
+Always this one command, at the desk, with a hand near the emergency stop (on the station's Wi-Fi):
+
+```bash
+cd agent && uv sync && ./start_web.sh   # then open http://127.0.0.1:8765 in Chrome
+```
+
+It starts the voice agent, the web page and the robot cameras together, **in live mode**: when a guest
+asks a question, the arms really draw. The page's "Live mode on: turn off" button switches to dry run.
+Ctrl+C stops everything and frees the robot's cameras for `run.sh` or the teleop dashboard.
 
 Testing the conversation only (no robot, does not take the station's cameras):
 

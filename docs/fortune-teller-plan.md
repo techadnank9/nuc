@@ -93,7 +93,7 @@ Mount the tray and stand to the table (tape or clamps). If they move, the model'
 
 ## Voice agent (LiveKit)
 
-- LiveKit Agents (Python), LiveKit Cloud project, run with `python agent.py dev`.
+- LiveKit Agents (Python), LiveKit Cloud project, started together with the web page by `agent/start_web.sh` (the only supported way to start it).
 - One tool: `draw_card()`, wrapping the harness.
 - Prompt: a warm, theatrical fortune teller. Short sentences. Never more than ~15 s of speech at a time. Card meanings in a small table it must use (upright only).
 - "Stuck" path: ask the guest to help, in character, then call `draw_card()` once more.

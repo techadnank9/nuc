@@ -1,6 +1,6 @@
 """The Robot Fortune Teller: a LiveKit voice agent on OpenAI Realtime through LiveKit Inference (no OpenAI key).
 
-Run:  uv run agent.py dev     (then talk to it in the LiveKit Agents Playground)
+Run:  ./start_web.sh   (always: it starts this agent and the web page together; see its header)
 Env:  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET in .env (model usage is billed to LiveKit Cloud)
       REALTIME_MODEL (default openai/gpt-realtime-2.1), REALTIME_VOICE (default marin), DRAW_MODE (default manual)
 """
