@@ -2,11 +2,12 @@
 
 A 3D-printed fortune card that a MakerMods Maker Arm (bimanual, parallel 2-finger gripper, driven by Dream-1) can pick up every time.
 
-## Gripper facts (from the station's maker_arm.urdf)
+## Gripper facts (i2rt YAM, linear_4310 parallel gripper)
 
-- Two prismatic fingers, each travels 0 to 52.4 mm, so the jaws open to roughly 100 mm and close fully.
-- Tool point (between the closed fingertips) is 169.6 mm out from the flange.
-- Dream-1 is a learned policy: its grasp position error is the thing to design for, not the gripper's strength.
+- The arms on NUCK-8 are i2rt YAM 6-DOF arms (https://i2rt.com/products/yam-6-dof-arm): 750 mm reach, 2 kg payload.
+- Parallel-jaw gripper, **95 to 96 mm throw** (`gripper_stroke: 0.096` in i2rt's linear_4310.yml), DM4310 motor, force-limited.
+- A card weighs about 7 to 15 g: far below the payload, so grip force is not the constraint; position error of the learned policy is.
+- Card v1's 30 × 18 × 14 mm handle was picked up by the base Dream-1 model on Nov 7.
 
 ## Design rules for a near-certain grasp
 
