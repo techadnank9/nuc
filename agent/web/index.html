@@ -179,10 +179,10 @@
 
   <section class="talk" aria-label="Conversation">
     <div class="speak">
-      <button id="micBtn" aria-label="Tap to talk" aria-pressed="false" disabled>
+      <button id="micBtn" aria-label="Tap to start talking" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
       </button>
-      <div class="hint" id="micHint">Begin a reading, then <b>tap to talk</b></div>
+      <div class="hint" id="micHint"><b>Tap to start talking</b></div>
     </div>
     <div class="convo">
       <h2>Transcript</h2>
@@ -413,7 +413,7 @@ async function begin() {
       await setCamera(true);
     } catch { camOn = false; $("camBtn").className = "round off"; }
 
-    ["micBtn","camBtn","camSelect","text","sendBtn","endBtn"].forEach(id => $(id).disabled = false);
+    ["camBtn","camSelect","text","sendBtn","endBtn"].forEach(id => $(id).disabled = false);
     $("startBtn").textContent = "Reading in progress"; voice("busy", "Waking up");
   } catch (e) {
     line("sys", "Could not start the reading: " + e.message + ". Check the page server and agent are running, then try again.");
@@ -423,9 +423,9 @@ async function begin() {
 
 async function finish(fromEvent = false) {
   if (room && !fromEvent) await room.disconnect();
-  room = null; micOn = false; $("micBtn").classList.remove("live"); $("micHint").innerHTML = "Begin a reading, then <b>tap to talk</b>";
+  room = null; micOn = false; $("micBtn").classList.remove("live"); $("micHint").innerHTML = "<b>Tap to start talking</b>";
   $("pip").classList.add("off"); $("fOverhead").classList.remove("drawing");
-  ["micBtn","camBtn","camSelect","text","sendBtn","endBtn"].forEach(id => $(id).disabled = true);
+  ["camBtn","camSelect","text","sendBtn","endBtn"].forEach(id => $(id).disabled = true);
   $("startBtn").disabled = false; $("startBtn").textContent = "New reading"; voice("", "Voice");
   line("sys", "The reading has ended.");
 }
@@ -447,11 +447,18 @@ async function setMic(on) {
   $("micHint").innerHTML = on ? "<b>Listening…</b> tap again when you're done" : "<b>Tap to talk</b>, or hold it (or the space bar) while you speak";
 }
 $("micBtn").addEventListener("pointerdown", async (e) => {
-  if (!room || !micOk) return; e.preventDefault(); pressAt = performance.now(); held = !micOn;
+  e.preventDefault();
+  if (!room) {                                   /* first tap: start the reading, then listen */
+    $("micHint").innerHTML = "<b>Connecting…</b>";
+    await begin();
+    if (room && micOk) { held = false; await setMic(true); }
+    return;
+  }
+  if (!micOk) return; pressAt = performance.now(); held = !micOn;
   if (!micOn) await setMic(true);
 });
 $("micBtn").addEventListener("pointerup", async () => {
-  if (!room || !micOk) return;
+  if (!room || !micOk || !pressAt) return;
   const long = performance.now() - pressAt > 450;
   if (long && held) await setMic(false);           /* held: release ends talking */
   else if (!held) await setMic(false);             /* tap while live: stop */
