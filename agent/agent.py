@@ -1,16 +1,15 @@
-"""The Robot Fortune Teller: a LiveKit voice agent on the OpenAI Realtime API.
+"""The Robot Fortune Teller: a LiveKit voice agent on OpenAI Realtime through LiveKit Inference (no OpenAI key).
 
 Run:  uv run agent.py dev     (then talk to it in the LiveKit Agents Playground)
-Env:  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, OPENAI_API_KEY in .env
-      REALTIME_MODEL (default gpt-realtime), REALTIME_VOICE (default marin), DRAW_MODE (default manual)
+Env:  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET in .env (model usage is billed to LiveKit Cloud)
+      REALTIME_MODEL (default openai/gpt-realtime-2.1), REALTIME_VOICE (default marin), DRAW_MODE (default manual)
 """
 
 import asyncio
 import os
 
 from dotenv import load_dotenv
-from livekit.agents import Agent, AgentServer, AgentSession, JobContext, RunContext, cli, function_tool
-from livekit.plugins import openai
+from livekit.agents import Agent, AgentServer, AgentSession, JobContext, RunContext, cli, function_tool, inference
 
 from cards import CARDS, describe
 from draw import draw_card as robot_draw
@@ -85,8 +84,8 @@ server = AgentServer()
 @server.rtc_session(agent_name="fortune-teller")
 async def fortune_teller(ctx: JobContext) -> None:
     session = AgentSession(
-        llm=openai.realtime.RealtimeModel(
-            model=os.environ.get("REALTIME_MODEL", "gpt-realtime"),
+        llm=inference.RealtimeModel(
+            model=os.environ.get("REALTIME_MODEL", "openai/gpt-realtime-2.1"),
             voice=os.environ.get("REALTIME_VOICE", "marin"),
         ),
     )
