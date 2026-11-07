@@ -285,13 +285,13 @@
     <li>All three cameras and the Quest are recognized by the station; both arm links come up.</li>
     <li>Card v1 is modelled, checked (watertight, correct grip spacing) and ordered.</li>
   </ul>
-  <div class="callout warn"><b>Blocker before any live run:</b> the station's Dream config still describes YAM arms. <code>dreamcli setup</code> must be rerun for Maker arms first.</div>
+  <div class="callout warn"><b>Correction:</b> NUCK-8's arms turned out to be YAM arms, so Dream's YAM config is right (a live run at 11:43 moved them correctly). Only the teleop kit's config still says Maker and needs switching to YAM before collecting demos.</div>
 </section>
 
 <section id="timeline">
   <h2><small>Plan</small>Timeline</h2>
   <div class="timeline">
-    <div class="item"><div class="when">Sat, now to 3 pm</div>Rerun Dream setup for Maker arms; first Quest teleop. Model card v2, tray and stand; print. Voice agent skeleton and card meanings.</div>
+    <div class="item"><div class="when">Sat, now to 3 pm</div>Switch the teleop config to YAM; first Quest teleop. Model card v2, tray and stand; print. Voice agent skeleton and card meanings.</div>
     <div class="item"><div class="when">Sat, 3 pm to 7 pm</div>Fix tray and stand on the table; collect 50 to 60 demos. Voice agent with a stubbed draw_card().</div>
     <div class="item key"><div class="when">Sat, by 9 pm</div>Check the dataset and <b>queue the fine-tune</b>. Run the whole loop with the base model as a dry run.</div>
     <div class="item"><div class="when">Overnight</div>The model trains.</div>

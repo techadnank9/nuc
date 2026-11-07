@@ -103,7 +103,7 @@ Mount the tray and stand to the table (tape or clamps). If they move, the model'
 
 | When | Who | What |
 |---|---|---|
-| **Sat Nov 7, now to 3 pm** | Arms | Staff/you rerun `dreamcli setup` for Maker arms; dry run; first teleop with the Quest |
+| **Sat Nov 7, now to 3 pm** | Arms | Switch the kit config to YAM; dry run; first teleop with the Quest |
 | | Hardware | Model card v2, deck tray, reveal stand; send to print; print stickers |
 | | Voice | LiveKit agent skeleton, prompt, card table |
 | **3 pm to 7 pm** | Arms | Fit tray + stand on the table; collect 50 to 60 demos |
@@ -131,7 +131,7 @@ Mount the tray and stand to the table (tape or clamps). If they move, the model'
 | Grab fails often | The "stuck" path *is* the feature: guest helps, in character. Film a run that shows it. |
 | Card falls out of the stand | Make the funnel wider; record more place demos |
 | Tag not read | Bigger tag, better light over the stand; the agent can ask "Which card do you see?" |
-| Station config still YAM | No live runs until `dreamcli setup` is redone for Maker arms |
+| Wrong arm type in a config | NUCK-8's arms are YAMs: Dream's `body: yam` is correct (a live run at 11:43 tracked its commands); the kit's `configs/station.yaml` says `maker` and must be switched to the YAM template before teleop |
 | Printing delays | Ask Mirdain for a pickup time early; the Prusa CORE One+ in the room is the backup |
 
 ## Safety (every live run)
@@ -149,3 +149,7 @@ Mount the tray and stand to the table (tape or clamps). If they move, the model'
 5. Prove teleop transfers and a small fine-tune dataset in the next two hours; set a hard cut-off for queueing.
 6. The harness now requires an empty stand before a draw, enforces 2 attempts per reading with a lock, and logs every attempt.
 7. Film early; keep the conversation to name + question + draw + fortune.
+
+## Correction (Nov 7, 1:40 pm)
+
+NUCK-8's arms are **YAM arms**. The 11:43 live run under Dream's `body: yam` config moved them and the measured joints tracked the commands (`~/.dreamlabs/last-run.csv`). The setup wizard set to Maker Arm misread their motors (258 to 335 °C) and refused, which confirms it. Keep Dream's config; fix the kit's `configs/station.yaml` (`arm: maker`) to the YAM template before collecting demos. YAM fine-tunes run with `--action-space joint`.

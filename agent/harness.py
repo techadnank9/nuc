@@ -28,6 +28,9 @@ from cards import CARDS
 HOST = os.environ.get("ROBOT_HOST", "pah@10.103.0.133")
 TASK = os.environ.get("DRAW_TASK", "draw the front card from the deck and place it in the stand")
 CHECKPOINT = os.environ.get("DRAW_CHECKPOINT", "")  # e.g. dream-1-ft:<account>-fortune; empty = base Dream-1
+# NUCK-8's arms are YAMs (the 11:43 live run tracked its commands under body: yam). A YAM fine-tune drives
+# the joints it learned, so it runs with --action-space joint (docs/running_your_model.md).
+ACTION_SPACE = os.environ.get("DRAW_ACTION_SPACE", "joint" if CHECKPOINT else "")
 BUDGET_S = int(os.environ.get("DRAW_BUDGET_S", "35"))  # homing + draw + place; tune on the real arm
 HERE = Path(__file__).resolve().parent
 LOG = HERE / "attempts.csv"
@@ -53,7 +56,6 @@ async def preflight() -> str | None:
         SSH
         + [
             "pgrep -af 'bin/(dreamcli|dhk-collect)' && exit 3; "
-            "grep -q '^body: yam' ~/.dreamlabs/station.yaml && exit 4; "
             "for l in can_follower_l can_follower_r; do ip -br link show $l 2>/dev/null | grep -q UP || exit 5; done; "
             "exit 0"
         ],
@@ -62,7 +64,6 @@ async def preflight() -> str | None:
     return {
         0: None,
         3: "another program holds the arms: " + out.strip(),
-        4: "the station's Dream config still says YAM arms: rerun dreamcli setup for Maker arms",
         5: "an arm's CAN link is down",
         124: "the station did not answer",
     }.get(code, f"preflight failed ({code}): {out.strip()[-200:]}")
@@ -87,6 +88,8 @@ async def run_policy(dry: bool) -> tuple[int, str]:
     cmd = ["dreamcli", "robot", "run", "--task", TASK]
     if CHECKPOINT:
         cmd += ["--checkpoint", CHECKPOINT]
+    if ACTION_SPACE:
+        cmd += ["--action-space", ACTION_SPACE]
     if dry:
         cmd.append("--dry-run")
     remote = (
