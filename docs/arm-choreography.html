@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fortune Teller Arm Choreography</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+DW+Pica&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Booth palette from the Fortune Teller page: one visual world, single theme. */
+  --booth: #1b1230;
+  --velvet: #2b1d47;
+  --velvet-2: #362659;
+  --brass: #c9a227;
+  --parchment: #efe4c8;
+  --muted: #b8aac9;
+  --jade: #4fb3a2;
+  --ember: #e0745a;
+  --display: "IM Fell DW Pica", Georgia, serif;
+  --body: "Instrument Sans", system-ui, sans-serif;
+  /* Layout: one reading column; the two trained skills are the centre, limits and recording rules frame them. */
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--booth); color: var(--parchment); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 64px; display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; text-wrap: balance; margin: 0; }
+h1 { font-size: 2.6rem; line-height: 1.1; color: var(--brass); }
+h2 { font-size: 1.75rem; color: var(--brass); }
+h3 { font-size: 1.3rem; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 1.1rem; color: var(--parchment); }
+.muted { color: var(--muted); }
+section { display: grid; gap: 16px; }
+.panel { background: var(--velvet); border-radius: 10px; padding: 20px; }
+.alert { border-left: 4px solid var(--ember); background: #3a1f3a; padding: 14px 18px; border-radius: 6px; }
+.alert strong { color: var(--ember); }
+.good { border-left: 4px solid var(--jade); background: #1f3340; padding: 14px 18px; border-radius: 6px; }
+code { font-size: .92em; background: var(--velvet-2); padding: 1px 6px; border-radius: 4px; }
+
+/* Reading timeline */
+.timeline { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; border-radius: 10px; overflow: hidden; }
+.tl { padding: 14px 12px; background: var(--velvet); border-right: 1px solid var(--booth); display: grid; gap: 4px; align-content: start; }
+.tl:last-child { border-right: 0; }
+.tl.arm { background: #3b2a12; }
+.tl .t { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; }
+.tl .who { font-size: .8rem; color: var(--brass); }
+.tl.arm .who { color: var(--brass); font-weight: 600; }
+.tl b { font-weight: 600; }
+
+/* Skills */
+.skill { background: var(--velvet); border-radius: 10px; overflow: hidden; border-top: 4px solid var(--brass); }
+.skill header { padding: 18px 20px 12px; display: grid; gap: 8px; }
+.prompt { font-family: var(--display); font-size: 1.35rem; color: var(--parchment); }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: .82rem; padding: 3px 10px; border-radius: 999px; background: var(--velvet-2); color: var(--parchment); }
+.chip.jade { background: #1f4a44; }
+.chip.ember { background: #5a2a26; }
+table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+th, td { text-align: left; padding: 10px 12px; vertical-align: top; border-top: 1px solid var(--velvet-2); }
+th { font-weight: 600; color: var(--muted); font-size: .82rem; }
+td.n { font-variant-numeric: tabular-nums; color: var(--brass); white-space: nowrap; }
+td.s { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.grip { display: inline-block; font-size: .78rem; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.grip.open { background: #1f4a44; }
+.grip.closed { background: #5a3b12; color: #ffd98a; }
+.grip.moving { background: var(--velvet-2); }
+.scroll { overflow-x: auto; }
+
+/* Limits */
+.limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.limit { background: var(--velvet); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; }
+.limit .range { font-variant-numeric: tabular-nums; font-size: 1.25rem; color: var(--brass); }
+.limit .what { font-weight: 600; }
+.bar { height: 8px; background: var(--velvet-2); border-radius: 4px; position: relative; }
+.bar span { position: absolute; top: 0; bottom: 0; background: var(--brass); border-radius: 4px; }
+
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+ul, ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 72ch; }
+svg text { font-family: var(--body); }
+.figure { background: var(--velvet); border-radius: 10px; padding: 12px; }
+.figure svg { width: 100%; height: auto; display: block; }
+
+@media (max-width: 760px) {
+  .timeline { grid-template-columns: 1fr 1fr; }
+  .tl { border-bottom: 1px solid var(--booth); }
+  .two { grid-template-columns: 1fr; }
+  h1 { font-size: 2rem; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<section>
+  <h1>One Fortune Teller reading, move by move</h1>
+  <p class="lede">What the YAM arms do from greeting to goodbye, broken into two short skills you can record with the leader arm and fine-tune Dream-1 on. Every move stays inside the arms' real joint limits.</p>
+  <div class="alert"><strong>Check the recording now.</strong> At 17:40 on Nov 7 there was no <code>~/hackathon_data/card-pick-leader</code> folder on NUCK-8, so the leader-arm session had not saved an episode yet. Make sure each take is started and stopped on the dashboard so it is written to disk.</div>
+</section>
+
+<section>
+  <h2>The reading at a glance</h2>
+  <p class="muted">Voice runs the whole time. The arms only move in the two brass blocks; the rest of the time they wait at home.</p>
+  <div class="timeline" role="list">
+    <div class="tl" role="listitem"><span class="t">0:00</span><span class="who">Voice</span><b>Greeting</b><span class="muted">Arms still at home, grippers open.</span></div>
+    <div class="tl" role="listitem"><span class="t">0:15</span><span class="who">Voice</span><b>The question</b><span class="muted">Guest asks what they want to know.</span></div>
+    <div class="tl arm" role="listitem"><span class="t">0:30</span><span class="who">Arms · skill 1</span><b>Draw the card</b><span class="muted">"Watch my hands." About 20 s start-up, then 10–20 s of motion.</span></div>
+    <div class="tl arm" role="listitem"><span class="t">1:10</span><span class="who">Arms · skill 2</span><b>Place it in the stand</b><span class="muted">Card faces the guest and the overhead camera.</span></div>
+    <div class="tl" role="listitem"><span class="t">1:35</span><span class="who">Camera + page</span><b>Reveal</b><span class="muted">Overhead camera reads the card's tag; the page flips the card.</span></div>
+    <div class="tl" role="listitem"><span class="t">2:10</span><span class="who">Voice</span><b>The fortune, goodbye</b><span class="muted">Arms back at home. Someone returns the card to its spot.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>The table, seen from above</h2>
+  <div class="figure">
+    <svg viewBox="0 0 900 360" role="img" aria-label="Top view: the two arm bases at the back, the card spot front right, the stand front centre, the overhead camera above, the guest in front">
+      <rect x="0" y="0" width="900" height="360" fill="#241838"/>
+      <!-- table -->
+      <rect x="120" y="40" width="660" height="250" rx="8" fill="#2f2150" stroke="#4a3a6e"/>
+      <!-- bases -->
+      <circle cx="300" cy="70" r="26" fill="#3b2a12" stroke="#c9a227" stroke-width="2"/>
+      <text x="300" y="75" text-anchor="middle" fill="#efe4c8" font-size="13">Left</text>
+      <text x="300" y="118" text-anchor="middle" fill="#b8aac9" font-size="12">stays home</text>
+      <circle cx="600" cy="70" r="26" fill="#3b2a12" stroke="#c9a227" stroke-width="2"/>
+      <text x="600" y="75" text-anchor="middle" fill="#efe4c8" font-size="13">Right</text>
+      <!-- right arm reach wedge (±60 deg in front) -->
+      <path d="M600 70 L 461 227 A 210 210 0 0 0 739 227 Z" fill="#c9a227" fill-opacity=".08" stroke="#c9a227" stroke-opacity=".5" stroke-dasharray="5 5"/>
+      <text x="740" y="205" fill="#c9a227" font-size="12">right arm works</text>
+      <text x="740" y="221" fill="#c9a227" font-size="12">in this wedge</text>
+      <!-- card spot -->
+      <rect x="620" y="190" width="70" height="44" rx="4" fill="none" stroke="#4fb3a2" stroke-width="2" stroke-dasharray="6 4"/>
+      <rect x="638" y="200" width="34" height="24" rx="3" fill="#111" stroke="#efe4c8"/>
+      <text x="655" y="252" text-anchor="middle" fill="#4fb3a2" font-size="13">card spot</text>
+      <text x="655" y="268" text-anchor="middle" fill="#b8aac9" font-size="11">tape the outline</text>
+      <!-- stand -->
+      <rect x="490" y="230" width="80" height="22" rx="3" fill="#c9a227"/>
+      <text x="530" y="276" text-anchor="middle" fill="#efe4c8" font-size="13">stand</text>
+      <!-- overhead cam -->
+      <circle cx="450" cy="165" r="14" fill="none" stroke="#efe4c8" stroke-width="2"/>
+      <circle cx="450" cy="165" r="4" fill="#efe4c8"/>
+      <text x="450" y="146" text-anchor="middle" fill="#efe4c8" font-size="12">overhead camera</text>
+      <!-- guest -->
+      <text x="450" y="330" text-anchor="middle" fill="#efe4c8" font-size="15">guest stands here</text>
+      <path d="M450 310 L450 296" stroke="#efe4c8" stroke-width="2"/>
+      <!-- distances -->
+      <text x="130" y="200" fill="#b8aac9" font-size="12">Keep the card spot and stand</text>
+      <text x="130" y="216" fill="#b8aac9" font-size="12">20–45 cm in front of the right</text>
+      <text x="130" y="232" fill="#b8aac9" font-size="12">base, within 45 cm sideways.</text>
+    </svg>
+  </div>
+  <p class="muted">Positions are a proposal: keep whatever the team already uses, but tape the card spot and the stand so they are in the same place for every take and every live reading.</p>
+</section>
+
+<section>
+  <h2>What the arms can and cannot do</h2>
+  <p>No YAM joint spins all the way round. Each joint stops at a hard limit (from i2rt's own <code>yam.urdf</code>). Plan every move so no joint has to go near its end.</p>
+  <div class="limits">
+    <div class="limit">
+      <span class="what">Base turn (joint 1)</span><span class="range">−150° to +179°</span>
+      <div class="bar"><span style="left:8%;width:91%"></span></div>
+      <span class="muted">Work in front of the arm, within about 60° of straight ahead. Never reach behind the base.</span>
+    </div>
+    <div class="limit">
+      <span class="what">Shoulder (joint 2)</span><span class="range">0° to 209°</span>
+      <div class="bar"><span style="left:0;width:58%"></span></div>
+      <span class="muted">Bends one way only. Objects closer than about 15 cm to the base are awkward to reach.</span>
+    </div>
+    <div class="limit">
+      <span class="what">Elbow (joint 3)</span><span class="range">0° to 179°</span>
+      <div class="bar"><span style="left:0;width:50%"></span></div>
+      <span class="muted">Bends one way only, never backwards. Keep it bent; a fully straight arm is at its reach limit.</span>
+    </div>
+    <div class="limit">
+      <span class="what">Wrist bends (joints 4, 5)</span><span class="range">−90° to +90°</span>
+      <div class="bar"><span style="left:25%;width:50%"></span></div>
+      <span class="muted">At most a right angle each way. Pointing the fingers straight down is fine; pointing them back at the arm is not.</span>
+    </div>
+    <div class="limit">
+      <span class="what">Gripper twist (joint 6)</span><span class="range">−120° to +120°</span>
+      <div class="bar"><span style="left:17%;width:66%"></span></div>
+      <span class="muted">240° in total, no continuous spin. Keep twists under 90° and never flip the card over.</span>
+    </div>
+    <div class="limit">
+      <span class="what">Gripper</span><span class="range">96 mm opening</span>
+      <div class="bar"><span style="left:0;width:100%"></span></div>
+      <span class="muted">Grip the 14 mm handle or the card's edge, never the flat face. Card ≈ 15 g; payload 2 kg.</span>
+    </div>
+    <div class="limit">
+      <span class="what">Reach box (recording)</span><span class="range">5–60 cm forward</span>
+      <div class="bar"><span style="left:0;width:80%"></span></div>
+      <span class="muted">±45 cm sideways, 0–55 cm high from the base. Teleop clamps the tool inside this box.</span>
+    </div>
+    <div class="limit">
+      <span class="what">Leader-arm recording</span><span class="range">right arm only</span>
+      <div class="bar"><span style="left:50%;width:50%"></span></div>
+      <span class="muted">You move the left arm by hand and the right arm copies it. Only the right arm does the task in recordings; the left stays still.</span>
+    </div>
+  </div>
+</section>
+
+<section class="skill" aria-labelledby="s1">
+  <header>
+    <h3 id="s1">Skill 1 · Draw the card</h3>
+    <div class="prompt">"pick up the black card and hold it in the air"</div>
+    <div class="facts"><span class="chip">Right arm</span><span class="chip">10–20 s per take</span><span class="chip jade">50+ takes</span><span class="chip">Same words Ramsha is recording with</span></div>
+  </header>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>#</th><th>Move</th><th>Time</th><th>Gripper</th><th>How to do it within the limits</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td><b>Start at home</b></td><td class="s">1 s</td><td><span class="grip open">open</span></td><td>Start the take with the arm at home and still. Every take starts from the same pose.</td></tr>
+      <tr><td class="n">2</td><td><b>Reach above the card</b></td><td class="s">3–4 s</td><td><span class="grip open">open</span></td><td>Turn the base toward the card (under 60°) and stretch forward. Stop about 15 cm above the card with the fingers pointing straight down.</td></tr>
+      <tr><td class="n">3</td><td><b>Line up</b></td><td class="s">1–2 s</td><td><span class="grip open">fully open</span></td><td>Twist the gripper so the fingers sit either side of the handle (or the card's short edge). Twist under 90°.</td></tr>
+      <tr><td class="n">4</td><td><b>Come straight down</b></td><td class="s">1–2 s</td><td><span class="grip open">fully open</span></td><td>Lower vertically, slowing for the last 3 cm, until the fingertips are below the top of the handle.</td></tr>
+      <tr><td class="n">5</td><td><b>Close all the way</b></td><td class="s">1 s</td><td><span class="grip closed">closed hard</span></td><td>Squeeze the gripper fully every time. Do not stop half-closed. The model copies how far you close.</td></tr>
+      <tr><td class="n">6</td><td><b>Pause</b></td><td class="s">0.5 s</td><td><span class="grip closed">closed hard</span></td><td>Stay still for half a second before lifting. This teaches "grip first, then move".</td></tr>
+      <tr><td class="n">7</td><td><b>Lift straight up</b></td><td class="s">2 s</td><td><span class="grip closed">closed hard</span></td><td>Raise 15–20 cm without swinging sideways. Keep the card upright.</td></tr>
+      <tr><td class="n">8</td><td><b>Hold in the air</b></td><td class="s">2–3 s</td><td><span class="grip closed">closed hard</span></td><td>Stay still, card visible to the overhead camera. Stop the take while still holding.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="skill" aria-labelledby="s2">
+  <header>
+    <h3 id="s2">Skill 2 · Place it in the stand</h3>
+    <div class="prompt">"place the card you are holding in the stand"</div>
+    <div class="facts"><span class="chip">Right arm</span><span class="chip">10–15 s per take</span><span class="chip jade">30+ takes</span><span class="chip ember">Start each take holding the card</span></div>
+  </header>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>#</th><th>Move</th><th>Time</th><th>Gripper</th><th>How to do it within the limits</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td><b>Start holding the card</b></td><td class="s">1 s</td><td><span class="grip closed">closed hard</span></td><td>Begin where skill 1 ended: card gripped, held in the air. Pick it up by hand-guiding first, then start the take.</td></tr>
+      <tr><td class="n">2</td><td><b>Move above the stand</b></td><td class="s">3 s</td><td><span class="grip closed">closed hard</span></td><td>Carry the card level to about 10 cm above the stand's slot. Base turn stays small.</td></tr>
+      <tr><td class="n">3</td><td><b>Line up with the slot</b></td><td class="s">1–2 s</td><td><span class="grip closed">closed hard</span></td><td>Twist the gripper so the card is parallel to the slot, face toward the guest. Twist under 90°.</td></tr>
+      <tr><td class="n">4</td><td><b>Lower into the slot</b></td><td class="s">2 s</td><td><span class="grip closed">closed hard</span></td><td>Go straight down until the card's bottom edge sits in the slot.</td></tr>
+      <tr><td class="n">5</td><td><b>Let go</b></td><td class="s">1 s</td><td><span class="grip open">fully open</span></td><td>Open the gripper fully and wait a moment so the card settles.</td></tr>
+      <tr><td class="n">6</td><td><b>Lift away</b></td><td class="s">1 s</td><td><span class="grip open">open</span></td><td>Go straight up 10 cm so the fingers do not knock the card.</td></tr>
+      <tr><td class="n">7</td><td><b>Return home</b></td><td class="s">3 s</td><td><span class="grip open">open</span></td><td>Back to the same home pose, then stop the take.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="two">
+  <div class="panel" style="display:grid;gap:12px">
+    <h3>Rules for every take</h3>
+    <ul>
+      <li>Use the exact prompt words above for every take of that skill, and the same words live.</li>
+      <li>Move smoothly and a little slower than feels natural; Dream-1 plays plans back at about two thirds of recorded speed anyway.</li>
+      <li>Move the card a few centimetres around its spot between takes, so the model learns to find it.</li>
+      <li>Same lighting, same table, same stand position. Nobody's hands in the cameras.</li>
+      <li>Throw away any take with a fumble, a half-closed grip or a bump straight away.</li>
+      <li>About 1 in 10 takes may show a recovery: miss, open, line up again, grip. That teaches the model to retry.</li>
+      <li>Fix the right wrist camera before relying on live runs: Dream-1 currently stretches a 640×480 picture to 16:9.</li>
+    </ul>
+  </div>
+  <div class="panel" style="display:grid;gap:12px">
+    <h3>Train, then run it</h3>
+    <ol>
+      <li>Record skill 1 (50+) and skill 2 (30+) into one dataset folder. One fine-tune learns both prompts.</li>
+      <li>Run <code>tools/finetune.py --check</code> (free) on the folder.</li>
+      <li>Upload and queue 500 steps ($100) by about 10 pm. Leave credit above the $100 so the arms can keep running Dream-1 while it trains.</li>
+      <li>When the model is ready, the page runs skill 1, then skill 2, with <code>--checkpoint</code> and <code>--action-space joint</code>.</li>
+      <li>Load the new model once without moving the arms, then do a live test with someone at the emergency stop.</li>
+    </ol>
+    <div class="good">If time runs short, record skill 1 only. The Fortune Teller can reveal the card while the arm holds it in the air.</div>
+  </div>
+</section>
+
+</main>
+</body>
+</html>
