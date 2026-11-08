@@ -75,6 +75,10 @@ Write in that style: one sentence, "pick up the <colour> <object>" (+ where to g
 one result it can see ("put it beside the green one", "hold it flipped up to show its back"). Avoid vague or \
 repeated goals ("shuffle", "tidy up"): break the goal into single steps like these and send one at a time.
 
+The cards are 3D-printed with a handle sticking up: a flat card cannot be gripped, its handle can. Every prompt about \
+a card says to pick it up by the handle: "pick up the grey card by the handle and put it on the other side of the \
+orange card". Never send the goal's wording unchanged when it leaves the handle out.
+
 Each attempt runs your prompt for a fixed time, then a tester looks at the cameras and reports done, progress, \
 failed or unclear. After progress or unclear, send the same prompt again (the arm continues from where it is). After \
 failed, change one thing: a clearer object name, a grasp point, a nearer or more visible result, or a smaller step. \
@@ -202,13 +206,19 @@ def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
     text = (f"Goal: {goal}\n\nWhat happened so far (oldest first):\n"
             + (json.dumps(history, indent=1) if history else "nothing yet; this is the first step")
             + "\n\nThe frames above are the robot's cameras now" + ("" if frames else " (none yet: no run so far)") + ".")
-    for _ in range(2):
+    for _ in range(3):
         d = ask(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "medium", text, frames)
-        if d["action"] != "prompt" or len(d["prompt"]) <= MAX_PROMPT_CHARS:
+        if d["action"] != "prompt":
             return d
-        log("director_prompt_rejected", prompt=d["prompt"], problem=f"longer than {MAX_PROMPT_CHARS} characters")
-        text += f"\n\nYour prompt {d['prompt']!r} is longer than {MAX_PROMPT_CHARS} characters. Give a shorter one."
-    raise Stop("the director kept proposing prompts that are too long")
+        p = d["prompt"].lower()
+        problem = (f"longer than {MAX_PROMPT_CHARS} characters" if len(p) > MAX_PROMPT_CHARS
+                   else "about a card but does not say to pick it up by the handle"
+                   if "card" in p and "handle" not in p else "")
+        if not problem:
+            return d
+        log("director_prompt_rejected", prompt=d["prompt"], problem=problem)
+        text += f"\n\nYour prompt {d['prompt']!r} was rejected: it is {problem}. Give another."
+    raise Stop("the director kept proposing prompts that cannot be sent")
 
 
 def test(prompt: str, s: dict, frames: dict[str, str], previous: str) -> dict:
