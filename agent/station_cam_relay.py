@@ -19,6 +19,7 @@ Never touches the arms.
 
 import base64
 import json
+import subprocess
 import threading
 import time
 import urllib.request
@@ -49,11 +50,24 @@ def role_of(key: str) -> str | None:
     return None
 
 
+def other_program() -> str:
+    """The teleop recorder or a Dream-1 run started by someone else: they need the cameras, so the relay keeps out."""
+    out = subprocess.run(["pgrep", "-af", "bin/(dhk-collect|dreamcli robot)"], capture_output=True, text=True).stdout
+    return "" if not out.strip() else ("teleop recording" if "dhk-collect" in out else "a Dream-1 run")
+
+
 def own_loop() -> None:
-    """Hold the cameras while want == own; release them when want == dream."""
+    """Hold the cameras while want == own and no other program needs them; release them when want == dream."""
     while True:
         if want["mode"] != "own":
             time.sleep(0.2)
+            continue
+        if who := other_program():
+            state["mode"], state["holding"] = "busy", False
+            state["cameras"] = {r: f"in use by {who}" for r in SERIALS}
+            with lock:
+                frames.clear()
+            time.sleep(2)
             continue
         pipes = {}
         for role, serial in SERIALS.items():
@@ -69,7 +83,12 @@ def own_loop() -> None:
         state["mode"] = "own" if pipes else "unavailable"
         state["holding"] = bool(pipes)
         try:
+            last_check = 0.0
             while want["mode"] == "own" and pipes:
+                if time.time() - last_check > 2:
+                    last_check = time.time()
+                    if other_program():
+                        break
                 for role, pipe in pipes.items():
                     fs = pipe.poll_for_frames()
                     if fs:

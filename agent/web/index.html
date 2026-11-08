@@ -294,6 +294,11 @@ async function pollRobot() {
     const s = await (await fetch("/robot/status", { cache: "no-store" })).json();
     const pill = $("pRobot");
     if (!s.online) { pill.className = "pill bad"; pill.lastElementChild.textContent = s.enabled === false ? "Robot cameras off" : "Robot offline"; }
+    else if (s.mode === "busy") {
+      const who = (Object.values(s.cameras || {})[0] || "another program").replace("in use by ", "");
+      pill.className = "pill busy"; pill.lastElementChild.textContent = "Robot busy: " + who;
+      for (const role in FEEDS) { const [fid, iid, eid] = FEEDS[role]; $(eid).hidden = false; $(eid).textContent = `Cameras in use by ${who}. They come back when it ends.`; $(iid).removeAttribute("src"); }
+    }
     else {
       robotMode = s.mode;
       pill.className = "pill " + (s.mode === "dream" ? "busy" : "ok");
