@@ -85,7 +85,9 @@ def own_loop() -> None:
         try:
             last_check = 0.0
             while want["mode"] == "own" and pipes:
-                if time.time() - last_check > 2:
+                # Often enough to let go while dreamcli is still importing: it opens the cameras ~1-2 s after it
+                # starts, and a 2 s check lost that race (top camera "VIDIOC_S_FMT ... Input/output error").
+                if time.time() - last_check > 0.2:
                     last_check = time.time()
                     if other_program():
                         break
