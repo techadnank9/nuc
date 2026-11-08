@@ -1,8 +1,13 @@
-"""Claude Fable orchestrator for Dream-1: a director picks short prompts, a tester watches the cameras and re-plans.
+"""Orchestrator for Dream-1: a director picks short prompts, a tester watches the cameras and re-plans.
 
-    director (Fable 5.1, effort medium)  goal + every attempt so far + the latest frames -> the next Dream-1 prompt
+    director (GPT-6 Astra, effort low;   goal + every attempt so far + the latest frames -> the next Dream-1 prompt
+              Fable 5.1 if no OpenAI key or --director fable)
     tester   (Fable 5.1, effort low)     at the end of each attempt: frames + station status ->
                                          done | progress | failed | unsafe | unclear
+
+Why Astra directs: in NVIDIA's Astranomy study (CoRL 2026) GPT-6 Astra supervising a robot model raised success from
+36.8% to 66.5%, and it led every model tested on robot-scene judgment; `low` effort because higher effort barely
+changed success there while costing 2.6x the latency. Every call's time is logged ("s") to compare.
 
 Each attempt runs one prompt for --attempt-seconds (30 by default), then the tester looks once and the director sends
 the same prompt again (progress), a reworded one (failed, or Dream refused it) or finishes (done). The loop and every
@@ -16,8 +21,8 @@ its view page (port 8093), both tunnelled over SSH. The person at the emergency 
     source ~/dream-env/bin/activate && dreamcli robot up --view      # 'dreamcli robot down' when done
 
 On the station itself (no tunnel; uv builds a throwaway env, dream-env is untouched):
-    export ANTHROPIC_API_KEY=...
-    uv run --no-project --with "anthropic>=2.6" --with python-dotenv python orchestrator.py --goal "..." --live
+    export ANTHROPIC_API_KEY=...          # or keep both keys in a .env next to this file (OPENAI_API_KEY for Astra)
+    uv run --no-project --with "anthropic>=2.6" --with openai --with python-dotenv python orchestrator.py --goal "..." --live
 
 From agent/ on a laptop (ANTHROPIC_API_KEY in agent/.env, or exported; needs SSH key access to the station):
     uv run python orchestrator.py --goal "move the wooden block at the end of the row to the other end"   # plan only
@@ -60,6 +65,7 @@ ON_STATION = _station_agent_here()
 API_PORT, VIEW_PORT = (8091, 8093) if ON_STATION else (8092, 8094)
 API, VIEW = f"http://127.0.0.1:{API_PORT}", f"http://127.0.0.1:{VIEW_PORT}"
 MODEL = "claude-fable-5-1"
+ASTRA = "gpt-6-astra"
 POLL_S = 2.0  # how often the code-side checks (arms alive, station error) run during an attempt
 LOG = Path(__file__).resolve().parent / "orchestrator_log.jsonl"
 
@@ -179,10 +185,39 @@ def status_line(s: dict) -> str:
 # --- Claude ---------------------------------------------------------------------------------------------------------
 
 client = anthropic.Anthropic()
+DIRECTOR = "fable"  # set in main(): "astra" when --director astra (default when OPENAI_API_KEY is set)
+_openai = None
+
+
+def ask_astra(system: str, schema: dict, effort: str, text: str, frames: dict[str, str]) -> dict:
+    """One GPT-6 Astra call (OpenAI Responses API) with the frames as images; returns the parsed JSON."""
+    global _openai
+    if _openai is None:
+        from openai import OpenAI
+        _openai = OpenAI()
+    content: list[dict] = []
+    for name, b64 in sorted(frames.items()):
+        content.append({"type": "input_text", "text": f"camera: {name}"})
+        content.append({"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"})
+    content.append({"type": "input_text", "text": text})
+    t0 = time.monotonic()
+    response = _openai.responses.create(
+        model=ASTRA,
+        instructions=system,
+        input=[{"role": "user", "content": content}],
+        reasoning={"effort": effort},
+        text={"format": {"type": "json_schema", "name": "decision", "strict": True, "schema": schema}},
+    )
+    if response.status != "completed" or not response.output_text:
+        raise Stop(f"Astra gave no answer (status {response.status})")
+    out = json.loads(response.output_text)
+    out["s"] = round(time.monotonic() - t0, 1)
+    return out
 
 
 def ask(system: str, schema: dict, effort: str, text: str, frames: dict[str, str]) -> dict:
     """One Fable call with the frames as images; returns the parsed JSON, or raises Stop on a refusal."""
+    t0 = time.monotonic()
     content: list[dict] = []
     for name, b64 in sorted(frames.items()):
         content.append({"type": "text", "text": f"camera: {name}"})
@@ -199,7 +234,9 @@ def ask(system: str, schema: dict, effort: str, text: str, frames: dict[str, str
     )
     if response.stop_reason == "refusal":
         raise Stop(f"Claude declined ({getattr(response.stop_details, 'category', None)})")
-    return json.loads(next(b.text for b in response.content if b.type == "text"))
+    out = json.loads(next(b.text for b in response.content if b.type == "text"))
+    out["s"] = round(time.monotonic() - t0, 1)
+    return out
 
 
 def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
@@ -207,7 +244,8 @@ def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
             + (json.dumps(history, indent=1) if history else "nothing yet; this is the first step")
             + "\n\nThe frames above are the robot's cameras now" + ("" if frames else " (none yet: no run so far)") + ".")
     for _ in range(3):
-        d = ask(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "medium", text, frames)
+        d = (ask_astra(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "low", text, frames) if DIRECTOR == "astra"
+             else ask(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "medium", text, frames))
         if d["action"] != "prompt":
             return d
         p = d["prompt"].lower()
@@ -288,7 +326,13 @@ def main() -> int:
     p.add_argument("--attempt-seconds", type=float, default=30, help="how long each prompt runs before a check")
     p.add_argument("--max-attempts", type=int, default=6)
     p.add_argument("--max-seconds", type=float, default=240)
+    p.add_argument("--director", choices=("astra", "fable"),
+                   default="astra" if os.environ.get("OPENAI_API_KEY") else "fable",
+                   help="which model picks the prompts (default: astra when OPENAI_API_KEY is set)")
     args = p.parse_args()
+    global DIRECTOR
+    DIRECTOR = args.director
+    print(f"director: {ASTRA if DIRECTOR == 'astra' else MODEL}; tester: {MODEL}")
 
     if not args.live:
         d = direct(args.goal, [], {})
