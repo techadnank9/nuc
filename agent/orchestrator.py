@@ -357,6 +357,8 @@ def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float, chec
             if result:
                 running = s.get("state") in ("running", "starting")
                 break
+            if s.get("state") == "starting" or not s.get("chunks"):
+                continue  # still starting (home move, first model answer): nothing to judge yet
             frames = latest_frames()
             if not frames:
                 continue  # the episode is still ramping up
