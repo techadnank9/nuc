@@ -51,8 +51,10 @@ def role_of(key: str) -> str | None:
 
 
 def other_program() -> str:
-    """The teleop recorder or a Dream-1 run started by someone else: they need the cameras, so the relay keeps out."""
-    out = subprocess.run(["pgrep", "-af", "bin/(dhk-collect|dreamcli robot)"], capture_output=True, text=True).stdout
+    """The teleop recorder, a Dream-1 run, or the station agent (dreamcli robot up): they need the cameras, so the relay
+    keeps out and shows the frames Dream-1 sees from the view page instead."""
+    out = subprocess.run(["pgrep", "-af", "bin/(dhk-collect|dreamcli robot)|robots[.]station"],
+                         capture_output=True, text=True).stdout
     return "" if not out.strip() else ("teleop recording" if "dhk-collect" in out else "a Dream-1 run")
 
 

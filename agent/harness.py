@@ -61,6 +61,12 @@ async def _sh(args: list[str], timeout: float) -> tuple[int, str]:
 
 
 async def preflight() -> str | None:
+    if await agent_status() is not None:
+        return None  # the station agent holds the arms for us; it reports its own errors
+    return await _preflight_classic()
+
+
+async def _preflight_classic() -> str | None:
     """Return a reason the robot cannot draw right now, or None if it can.
 
     If a previous Dream-1 run is still shutting down (homing, switching off), wait up to 25 s for it first.
@@ -126,8 +132,59 @@ async def relay(action: str) -> None:
     await _sh(SSH + [f"curl -s -m 8 -X POST 127.0.0.1:8097/{action} >/dev/null 2>&1 || true"], 20)
 
 
+AGENT_API = "http://127.0.0.1:8091"  # the station agent (dreamcli robot up), on the station itself
+
+
+async def _agent(method: str, path: str, body: dict | None = None, timeout: int = 20) -> dict | None:
+    """One call to the station agent over SSH; None when no agent answers (then the page runs dreamcli itself)."""
+    data = f"-H 'Content-Type: application/json' -d {shlex.quote(json.dumps(body))}" if body is not None else ""
+    code, out = await _sh(SSH + [f"curl -s -m {timeout - 5} -X {method} {data} {AGENT_API}{path}"], timeout)
+    try:
+        return json.loads(out.strip().splitlines()[-1]) if code == 0 and out.strip() else None
+    except (IndexError, json.JSONDecodeError):
+        return None
+
+
+async def agent_status() -> dict | None:
+    """The station agent's status, or None when it is not running."""
+    return await _agent("GET", "/status", timeout=10)
+
+
+async def _run_on_agent(status: dict, task: str, budget: int) -> tuple[int, str]:
+    """Run `task` on the running station agent: the arms stay powered and the model stays warm between commands.
+
+    Idle agent: start a run (with our checkpoint). Running agent: change the prompt, which starts a fresh episode in
+    about 2 s. After `budget` s the agent stops and the arms hold where they are (still on, ready for the next one).
+    """
+    if status.get("state") in ("running", "starting"):
+        reply = await _agent("POST", "/prompt", {"prompt": task})
+    else:
+        reply = await _agent("POST", "/start", {"prompt": task, **({"checkpoint": CHECKPOINT} if CHECKPOINT else {})},
+                             timeout=70)
+    if not reply or reply.get("error"):
+        return 1, f"the station agent refused: {(reply or {}).get('error', 'no answer')}"
+    end = time.monotonic() + budget
+    while time.monotonic() < end:
+        await asyncio.sleep(2)
+        now = await agent_status() or {}
+        if now.get("state") not in ("running", "starting"):
+            err = now.get("last_error")
+            return (1, f"Dream-1 run ended: {err}") if err else (0, "")
+        if now.get("prompt") != task:  # another command took over: this one is done
+            return 0, ""
+    await _agent("POST", "/stop", timeout=70)
+    return 124, ""
+
+
 async def run_policy(task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str]:
-    """Start Dream-1 on the station and stop it with SIGINT after `budget` s (dreamcli then homes and releases)."""
+    """Run Dream-1 on `task` for `budget` s.
+
+    With a station agent up (dreamcli robot up joint --view for our fine-tune), it runs there: no 20 s start-up, and
+    the arms hold instead of switching off. Otherwise it starts dreamcli robot run and stops it with SIGINT after
+    `budget` s (dreamcli then homes and releases).
+    """
+    if (status := await agent_status()) is not None:
+        return await _run_on_agent(status, task, budget)
     cmd = ["dreamcli", "robot", "run", "--task", task]
     if CHECKPOINT:
         cmd += ["--checkpoint", CHECKPOINT]
@@ -143,7 +200,10 @@ async def run_policy(task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str
 
 
 async def stop_robot() -> None:
-    """Stop a running Dream-1 run now: SIGINT is dreamcli's normal stop (arms go home, switch off, go limp)."""
+    """Stop Dream-1 now. Station agent: the arms hold where they are. dreamcli run: SIGINT (home, switch off)."""
+    if await agent_status() is not None:
+        await _agent("POST", "/stop", timeout=70)
+        return
     await _sh(SSH + ["pkill -INT -f 'bin/dreamcli robot run' || true"], 15)
 
 
@@ -162,9 +222,12 @@ async def run_command(task: str, seconds: int = 30, mode: str | None = None, on_
     await on_step("release", "Handing the cameras to Dream-1")
     await relay("release")
     try:
-        await on_step("policy", f"Arms moving home, then Dream-1 runs for {seconds} s")
+        agent = await agent_status() is not None
+        await on_step("policy", f"Dream-1 runs for {seconds} s" if agent
+                      else f"Arms moving home, then Dream-1 runs for {seconds} s")
         code, out = await run_policy(task=task, budget=seconds)
-        await on_step("stop", "Dream-1 stopped: arms return home and switch off")
+        await on_step("stop", "Dream-1 paused: arms hold, still connected" if agent
+                      else "Dream-1 stopped: arms return home and switch off")
     finally:
         await relay("resume")
     ok = code in (0, 124, 130)
