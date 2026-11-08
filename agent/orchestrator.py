@@ -99,6 +99,10 @@ Reply with JSON only. action "prompt" sends `prompt` for the next attempt. actio
 action "give_up" when the history shows it is not working (the same failure after three different wordings) or the \
 scene makes it impossible."""
 
+TRAINED = ("can you shuffle these cards using both arms",
+           "pick up the card from the handle and show it, then put it back down")
+FINETUNED = False  # set in main() by --finetuned
+
 # Appended to DIRECTOR_SYSTEM with --finetuned: the Nov 7 fine-tune learned these two sentences exactly (32 + 9 takes).
 FINETUNED_NOTE = """
 
@@ -266,6 +270,8 @@ def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
         if d["action"] != "prompt":
             return d
         p = d["prompt"].lower()
+        if FINETUNED and p.strip() in TRAINED:
+            return d  # the fine-tune's own training sentence: send it word for word
         problem = (f"longer than {MAX_PROMPT_CHARS} characters" if len(p) > MAX_PROMPT_CHARS
                    else "about a card but does not say to pick it up by the handle"
                    if "card" in p and "handle" not in p else "")
@@ -398,9 +404,10 @@ def main() -> int:
                    default="astra" if os.environ.get("OPENAI_API_KEY") else "fable",
                    help="which model picks the prompts (default: astra when OPENAI_API_KEY is set)")
     args = p.parse_args()
-    global DIRECTOR, DIRECTOR_SYSTEM, CHECKPOINT
+    global DIRECTOR, DIRECTOR_SYSTEM, CHECKPOINT, FINETUNED
     DIRECTOR = args.director
     CHECKPOINT = args.checkpoint
+    FINETUNED = args.finetuned
     if args.finetuned:
         DIRECTOR_SYSTEM += FINETUNED_NOTE
     print(f"director: {ASTRA if DIRECTOR == 'astra' else MODEL}; "
