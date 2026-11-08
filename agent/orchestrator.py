@@ -201,6 +201,7 @@ def status_line(s: dict) -> str:
 # --- Claude ---------------------------------------------------------------------------------------------------------
 
 client = anthropic.Anthropic()
+CHECKPOINT = ""  # set in main(): --checkpoint, the Dream model the station runs (empty keeps the agent's own)
 DIRECTOR = "fable"  # set in main(): "astra" when --director astra (default when OPENAI_API_KEY is set)
 _openai = None
 
@@ -336,7 +337,7 @@ def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float, chec
         if running:
             http("POST", f"{API}/prompt", {"prompt": d["prompt"]})  # a fresh episode; the arm goes on from where it is
         else:
-            http("POST", f"{API}/start", {"prompt": d["prompt"]})
+            http("POST", f"{API}/start", {"prompt": d["prompt"], **({"checkpoint": CHECKPOINT} if CHECKPOINT else {})})
             running = True
         sent, previous, result = time.monotonic(), "", ""
         notes: list[str] = []
@@ -388,14 +389,18 @@ def main() -> int:
     p.add_argument("--check-every", type=float, default=4, help="pause between tester checks (each takes ~5 s more)")
     p.add_argument("--max-attempts", type=int, default=8)
     p.add_argument("--max-seconds", type=float, default=300)
+    p.add_argument("--checkpoint", default="",
+                   help="Dream model for the run, e.g. dream-1-ft:e9be4327-fortune (start the agent with "
+                        "'dreamcli robot up joint --view' for a YAM fine-tune)")
     p.add_argument("--finetuned", action="store_true",
                    help="the arms run our fine-tune: the director prefers its two trained instructions")
     p.add_argument("--director", choices=("astra", "fable"),
                    default="astra" if os.environ.get("OPENAI_API_KEY") else "fable",
                    help="which model picks the prompts (default: astra when OPENAI_API_KEY is set)")
     args = p.parse_args()
-    global DIRECTOR, DIRECTOR_SYSTEM
+    global DIRECTOR, DIRECTOR_SYSTEM, CHECKPOINT
     DIRECTOR = args.director
+    CHECKPOINT = args.checkpoint
     if args.finetuned:
         DIRECTOR_SYSTEM += FINETUNED_NOTE
     print(f"director: {ASTRA if DIRECTOR == 'astra' else MODEL}; "
