@@ -53,7 +53,7 @@ python3 -m venv .venv && .venv/bin/pip install trimesh manifold3d numpy shapely 
 
 - **Service:** the free hackathon print service from **Mirdain × MakerMods** (QR code at the print table → https://mirdainsystems.com/labs.html).
 - **Upload:** `card_19_sun.3mf` (19 KB). Mirdain's page sliced it automatically and gave a free estimate ($0.72 for one piece; free at the event).
-- **Settings:** **PLA, blue**, quantity 1. Recommended print settings for any version: 0.2 mm layers, 15 to 20% infill, 3 walls, **no supports**, printed flat on the back.
+- **Settings:** **PLA, blue**, quantity 1. Settings for v1/v2: 0.2 mm layers, 15 to 20% infill, 3 walls, **no supports**, printed flat on the back. (The v3 deck prints **face down**, see `out/print/PRINT.md`.)
 - **Order:** submitted Nov 7, request `214a889f-c70c-40e3-ac0a-dde79788168e`; Mirdain follows up by email. Printed in Mirdain's farm (not in the room), so ask for a pickup time.
 - **Backup printer:** the Prusa CORE One+ in the room (slice with PrusaSlicer, profile "Prusa CORE One+ / 0.4 nozzle / Prusament PLA / 0.20 mm STRUCTURAL").
 

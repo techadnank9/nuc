@@ -32,7 +32,7 @@ deck (`agent/cards.py`) lists the same eight.
   two flat grip faces 14 mm apart (the shape base Dream-1 picked up on Nov 7), but **without v2's friction ribs**.
   A 7 mm low dome replaces the flat top, and a 17 mm crystal ball outline is engraved 0.6 mm on both faces,
   covering the dome. About 80% of each grip face stays flat (`check_deck.py` reports it). Card 63 × 113 × 14 mm.
-  **Untested on the arm:** smooth faces have less friction; `GRIP_RIBS=1` brings the ribs back (with a smaller ball).
+  **Untested on the arm:** smooth faces have less friction; `GRIP_RIBS=1` brings the ribs back (the ball is not resized: check it does not overlap the ribs).
 - **No tag sticker:** the backs are truly identical. (`TAG_POCKET = True` in `generate_deck.py` adds a
   27 × 27 mm pocket for an ArUco sticker, if the harness needs to read the card by tag again.)
 
