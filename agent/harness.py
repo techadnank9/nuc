@@ -185,7 +185,7 @@ SHUFFLE_TASK_ = "can you shuffle these cards using both arms"
 SHOW_TASK_ = "pick up the card from the handle and show it, then put it back down"
 SHUFFLE_ROUNDS = [("Shuffle, round 1 of 3", SHUFFLE_TASK_, 30), ("Shuffle, round 2 of 3", SHUFFLE_TASK_, 30),
                   ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30)]
-SHOW = [("Show the card", SHOW_TASK_, 150)]
+SHOW = [("Show the card", SHOW_TASK_, 90)]
 ACTS = {"full": SHUFFLE_ROUNDS + SHOW, "shuffle": SHUFFLE_ROUNDS, "show": SHOW}
 ACT = ACTS["full"]
 
