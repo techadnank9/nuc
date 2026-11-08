@@ -206,8 +206,12 @@ async function fetchBytes(file) {
     catch (e) { if (tries >= 3) throw e; await new Promise((ok) => setTimeout(ok, 400)); }
   }
 }
+// meshes.json holds every STL as base64 (for hosts that do not serve .stl files); the .stl files are the same meshes.
+let packed = null;
+try { const r = await fetch("meshes.json"); if (r.ok) packed = await r.json(); } catch (e) { packed = null; }
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
 for (const [name, file] of Object.entries(data.files)) {
-  const g = loader.parse(await fetchBytes(file));
+  const g = loader.parse(packed ? b64(packed[name]) : await fetchBytes(file));
   g.computeVertexNormals();
   geoms[name] = g;
 }
