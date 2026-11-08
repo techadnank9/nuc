@@ -13,7 +13,11 @@ its view page (port 8093), both tunnelled over SSH. The person at the emergency 
     ssh pah@10.103.0.133
     source ~/dream-env/bin/activate && dreamcli robot up --view      # 'dreamcli robot down' when done
 
-From agent/ (ANTHROPIC_API_KEY in agent/.env, or exported):
+On the station itself (no tunnel; uv builds a throwaway env, dream-env is untouched):
+    export ANTHROPIC_API_KEY=...
+    uv run --no-project --with anthropic --with python-dotenv python orchestrator.py --goal "..." --live
+
+From agent/ on a laptop (ANTHROPIC_API_KEY in agent/.env, or exported; needs SSH key access to the station):
     uv run python orchestrator.py --goal "move the wooden block at the end of the row to the other end"   # plan only
     uv run python orchestrator.py --goal "..." --live        # the arms move: hand on the emergency stop
 
@@ -39,7 +43,20 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")  # ANTHROPIC_API_KEY lives in agent/.env (gitignored)
 
 HOST = os.environ.get("ROBOT_HOST", "pah@10.103.0.133")
-API_PORT, VIEW_PORT = 8092, 8094  # local ends of the tunnels to the station's 8091 (agent API) and 8093 (view page)
+
+
+def _station_agent_here() -> bool:
+    """True when this runs on the station itself (its agent answers on 8091 here): no SSH tunnel is needed."""
+    try:
+        urllib.request.urlopen("http://127.0.0.1:8091/status", timeout=2).close()
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+ON_STATION = _station_agent_here()
+# On a laptop: local ends of SSH tunnels to the station's 8091 (agent API) and 8093 (view page).
+API_PORT, VIEW_PORT = (8091, 8093) if ON_STATION else (8092, 8094)
 API, VIEW = f"http://127.0.0.1:{API_PORT}", f"http://127.0.0.1:{VIEW_PORT}"
 MODEL = "claude-fable-5-1"
 CHECK_S = 4.0  # pause between tester checks (each check itself takes a few seconds)
@@ -265,9 +282,11 @@ def main() -> int:
         print("\nNothing was sent to the robot. Add --live to run it (hand on the emergency stop).")
         return 0
 
-    tunnel = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ExitOnForwardFailure=yes", "-N",
-                               "-L", f"{API_PORT}:127.0.0.1:8091", "-L", f"{VIEW_PORT}:127.0.0.1:8093", HOST])
-    time.sleep(2)
+    tunnel = None
+    if not ON_STATION:
+        tunnel = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ExitOnForwardFailure=yes", "-N",
+                                   "-L", f"{API_PORT}:127.0.0.1:8091", "-L", f"{VIEW_PORT}:127.0.0.1:8093", HOST])
+        time.sleep(2)
     code = 0
     try:
         log("start", goal=args.goal, max_prompts=args.max_prompts, max_seconds=args.max_seconds)
@@ -289,7 +308,8 @@ def main() -> int:
             log("arms_home")
         except Exception as e:  # noqa: BLE001 - whatever failed, the operator must know the arms may not be home
             log("stop_failed", error=str(e), action="use the emergency stop or 'dreamcli robot down'")
-        tunnel.terminate()
+        if tunnel:
+            tunnel.terminate()
     return code
 
 
