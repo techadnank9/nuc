@@ -137,6 +137,24 @@ async def robot_act(request: web.Request) -> web.Response:
     return web.json_response({"started": True, **mode_info()})
 
 
+async def robot_staged(request: web.Request) -> web.Response:
+    """Grab & place / Grab & show: confirmed grip first, then the move (harness.run_staged)."""
+    if COMMAND_LOCK.locked():
+        return web.json_response({"error": "A command is running. Press Stop arms first, or wait."}, status=409)
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+
+    async def run() -> None:
+        async with COMMAND_LOCK:
+            await harness.run_staged(str(body.get("kind", "place")), str(body.get("color", "orange")),
+                                     on_step=push_event)
+
+    asyncio.create_task(run())
+    return web.json_response({"started": True})
+
+
 async def robot_home(_: web.Request) -> web.Response:
     """Reset & home: stop anything running, reopen faulted arms, move both arms to the start position."""
     await push_event("check", "Reset & home pressed")
@@ -196,6 +214,7 @@ def main() -> None:
     app.router.add_post("/robot/stop", robot_stop)
     app.router.add_post("/robot/act", robot_act)
     app.router.add_post("/robot/home", robot_home)
+    app.router.add_post("/robot/staged", robot_staged)
     app.router.add_get("/robot/events", robot_events)
     app.on_startup.append(start_cameras)
     app.on_cleanup.append(stop_cameras)

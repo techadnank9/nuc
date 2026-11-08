@@ -357,6 +357,70 @@ async def reset_home(on_step=None) -> dict:
     return {"ok": True}
 
 
+BASE_MODEL = "dreamlabs/dream-1-beta"  # follows reworded instructions, unlike our fine-tune
+GRAB_TRIES, GRAB_WAIT_S, THEN_S = 3, 45, 40
+
+
+async def run_staged(kind: str, color: str = "orange", on_step=None) -> dict:
+    """Grab first, then move: step 1 asks for the card held just above the table; only once the gripper data shows
+    the handle steady between the fingers (show_done.py grip) is step 2 sent, while the card is still held.
+    kind "place": carry it to the far end of the row; "show": lift it high, back visible, then put it back."""
+    global STOP_REQUESTED
+    on_step = on_step or _noop
+    STOP_REQUESTED = False
+    color = color if color in ("orange", "red", "blue", "black") else "orange"
+    grab = f"pick up the {color} card by the handle and hold it just above the table"
+    then = {"place": f"keep holding the {color} card and carry it to the empty space at the far end of the row, "
+                     "then put it down on the table and open the gripper",
+            "show": f"keep holding the {color} card and lift it up high so its back is completely visible, "
+                    "then put it back down on the table and open the gripper"}.get(kind)
+    if then is None or await agent_status() is None:
+        await on_step("failed", "Start the station agent first (dreamcli robot up joint --view)")
+        return {"ok": False}
+    await relay("release")
+    try:
+        for attempt in range(1, GRAB_TRIES + 1):
+            if STOP_REQUESTED:
+                break
+            await on_step("policy", f"Grab the {color} card, try {attempt} of {GRAB_TRIES}")
+            await _agent("POST", "/stop", timeout=70)
+            await _agent("POST", "/home", timeout=70)
+            reply = await _agent("POST", "/start", {"prompt": grab, "checkpoint": BASE_MODEL}, timeout=70)
+            if not reply or reply.get("error"):
+                await on_step("failed", f"the station agent refused: {(reply or {}).get('error', 'no answer')}")
+                return {"ok": False}
+            await asyncio.sleep(6)
+            baseline, t0, arm = await _show_rows(), time.monotonic(), None
+            while time.monotonic() - t0 < GRAB_WAIT_S and not STOP_REQUESTED:
+                code, out = await _sh(SSH + [f"{REMOTE_SHOW_DONE} grip {baseline}"], 15)
+                try:
+                    arm = json.loads(out.strip().splitlines()[-1]).get("arm") if code == 0 else None
+                except (IndexError, json.JSONDecodeError):
+                    arm = None
+                if arm:
+                    break
+                await asyncio.sleep(1)
+            if arm:
+                side = "left" if arm == "l" else "right"
+                await on_step("policy", f"Grip confirmed on the {side} arm: " +
+                              ("carrying it to the far end" if kind == "place" else "lifting and showing it"))
+                await _agent("POST", "/prompt", {"prompt": then})
+                end = time.monotonic() + THEN_S
+                while time.monotonic() < end and not STOP_REQUESTED:
+                    await asyncio.sleep(2)
+                await _agent("POST", "/stop", timeout=70)
+                await _agent("POST", "/home", timeout=70)
+                await on_step("done", "Done: arms home")
+                return {"ok": True}
+        await _agent("POST", "/stop", timeout=70)
+        await _agent("POST", "/home", timeout=70)
+        await on_step("stop" if STOP_REQUESTED else "failed",
+                      "Stopped: arms home" if STOP_REQUESTED else f"No firm grip in {GRAB_TRIES} tries: arms home")
+        return {"ok": False}
+    finally:
+        await relay("resume")
+
+
 STOP_REQUESTED = False  # set by stop_robot(): ends a running Shuffle & show after the current step
 
 

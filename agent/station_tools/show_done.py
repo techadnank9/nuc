@@ -2,6 +2,7 @@
 
     show_done.py count          -> number of rows logged so far (the baseline when a show starts)
     show_done.py check <rows>   -> JSON {"held": bool, "done": bool, "arm": "l"|"r"|null} for rows after <rows>
+    show_done.py grip <rows>    -> JSON {"grip": bool, "arm": ...}: a handle steady between the fingers for 0.8 s
 
 held: an arm closed (jaw < 0.12) for >= 3 s while its shoulder lifted >= 0.4 rad (holding the card up).
 done: after a hold, that arm opened again (jaw > 0.8) for >= 1 s: the card was put back down.
@@ -53,10 +54,26 @@ def check(r: list[dict]) -> dict:
     return result
 
 
+def grip(r: list[dict]) -> dict:
+    """An arm's jaw steady between 0.06 and 0.35 for >= 0.8 s: a handle (not nothing, not open) between the fingers."""
+    for arm in ("l", "r"):
+        start = None
+        for x in r:
+            j, t = float(x[f"gripper_{arm}"]), float(x["t_s"])
+            if 0.06 <= j <= 0.35:
+                start = t if start is None else start
+                if t - start >= 0.8:
+                    return {"grip": True, "arm": arm}
+            else:
+                start = None
+    return {"grip": False, "arm": None}
+
+
 if __name__ == "__main__":
     all_rows = rows()
     if sys.argv[1] == "count":
         print(len(all_rows))
     else:
         start = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-        print(json.dumps(check(all_rows[start:] if start <= len(all_rows) else all_rows)))
+        part = all_rows[start:] if start <= len(all_rows) else all_rows
+        print(json.dumps(grip(part) if sys.argv[1] == "grip" else check(part)))

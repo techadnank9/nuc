@@ -250,6 +250,14 @@
         <button class="go actbtn" type="button" data-act="shuffle">Shuffle</button>
         <button class="go actbtn" type="button" data-act="show">Show the card</button>
       </div>
+      <label class="rounds" for="cardColor">Card
+        <select id="cardColor"><option>orange</option><option>red</option><option>blue</option><option>black</option></select>
+        <span>grip first, then move</span>
+      </label>
+      <div class="actrow">
+        <button class="go actbtn" type="button" data-staged="place">Grab &amp; place</button>
+        <button class="go actbtn" type="button" data-staged="show">Grab &amp; show</button>
+      </div>
       <div class="chips" id="chips">
         <button data-task="can you shuffle these cards using both arms" data-secs="120">Shuffle the cards</button>
         <button data-task="pick up the card from the handle and show it, then put it back down" data-secs="120">Show a card</button>
@@ -510,7 +518,7 @@ async function pollEvents() {
       : "No robot connected (started with DRAW_MODE=manual): commands are refused.";
     $("cmdModel").textContent = d.model ? `Model: our fine-tune (${d.model})` : "Model: Dream-1 base (fine-tune not set)";
     $("cmdGo").disabled = d.busy; $("cmdGo").textContent = d.busy ? "Running…" : "Send to Dream-1";
-    document.querySelectorAll("[data-act]").forEach((b) => b.disabled = d.busy);
+    document.querySelectorAll("[data-act], [data-staged]").forEach((b) => b.disabled = d.busy);
     $("actBtn").textContent = d.busy ? "Arms working…" : "Shuffle & show a card";
     $("fOverhead").classList.toggle("drawing", d.busy);
   } catch {}
@@ -533,6 +541,13 @@ $("cmdGo").onclick = async () => {
 };
 $("cmdText").addEventListener("input", () => $("cmdErr").textContent = "");
 $("cmdStop").onclick = async () => { await fetch("/robot/stop", { method: "POST" }); };
+document.querySelectorAll("[data-staged]").forEach((b) => b.onclick = async () => {
+  lastTrip = -1;
+  $("cmdErr").textContent = "";
+  const r = await fetch("/robot/staged", { method: "POST", headers: { "Content-Type": "application/json" },
+                                           body: JSON.stringify({ kind: b.dataset.staged, color: $("cardColor").value }) });
+  if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
+});
 $("homeBtn").onclick = async () => { await fetch("/robot/home", { method: "POST" }); };
 document.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
   lastTrip = -1;
