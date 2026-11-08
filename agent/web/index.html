@@ -146,6 +146,16 @@
   .homebtn { border-radius:var(--r-ctl); min-height:44px; padding:0 14px; font-weight:600; cursor:pointer; background:transparent; color:var(--parchment); border:2px solid var(--jade); }
   .rounds { display:flex; align-items:center; gap:8px; margin:-4px 0 10px; font-size:.9rem; color:var(--muted); }
   .rounds select { min-height:36px; border-radius:8px; background:var(--velvet-2); color:var(--parchment); border:1px solid #4a3a6e; padding:0 8px; font:inherit; }
+  .cmd .sub { margin:-6px 0 10px; font-size:12.5px; color:var(--dim); }
+  .armsblock .row { margin-top:0; }
+  .armsblock .row button { flex:1; }
+  .orchblock { border:2px solid var(--jade); }
+  .orchblock h2 { color:var(--jade); }
+  .orchbtn { width:100%; min-height:48px; border-radius:var(--r-ctl); font:inherit; font-weight:600; cursor:pointer;
+             background:var(--jade); color:#0e2b25; border:0; }
+  .orchbtn:disabled { opacity:.45; cursor:default; }
+  .manual summary { cursor:pointer; font-size:15px; font-weight:600; color:var(--brass-soft); }
+  .manual[open] summary { margin-bottom:12px; }
   .orchgoal { width:100%; margin:6px 0 6px; font:inherit; font-size:.9rem; color:var(--parchment); background:var(--velvet-2); border:1px solid #4a3a6e; border-radius:8px; padding:8px; resize:vertical; }
   .actrow { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:-4px 0 12px; }
   .actrow .actbtn { margin:0; }
@@ -241,8 +251,20 @@
         <div class="cardtext"><h3 id="cardTitle">Not drawn yet</h3><p id="cardMeaning">Ask your question and the hands will draw one card from the deck.</p></div>
       </div>
     </div>
+    <div class="block cmd armsblock">
+      <h2>Arms</h2>
+      <div class="row">
+        <button class="stop" id="cmdStop">Stop arms</button>
+        <button class="homebtn" id="homeBtn" type="button">Reset &amp; home</button>
+      </div>
+      <div class="mode" id="cmdMode">Checking robot mode…</div>
+      <div class="mode" id="cmdModel"></div>
+      <div class="err" id="cmdErr"></div>
+    </div>
+
     <div class="block cmd">
-      <h2>Command the arms</h2>
+      <h2>Fortune Teller moves</h2>
+      <p class="sub">Our trained model: the moves you recorded.</p>
       <button class="go actbtn" id="actBtn" type="button" data-act="full">Shuffle &amp; show a card</button>
       <label class="rounds" for="rounds">Shuffles
         <select id="rounds"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
@@ -251,17 +273,30 @@
         <button class="go actbtn" type="button" data-act="shuffle">Shuffle</button>
         <button class="go actbtn" type="button" data-act="show">Show the card</button>
       </div>
+    </div>
+
+    <div class="block cmd">
+      <h2>Grip first</h2>
+      <p class="sub">Base Dream-1: grabs the card, confirms the grip, then moves it.</p>
       <label class="rounds" for="cardColor">Card
         <select id="cardColor"><option>orange</option><option>red</option><option>blue</option><option>black</option></select>
-        <span>grip first, then move</span>
       </label>
       <div class="actrow">
         <button class="go actbtn" type="button" data-staged="place">Grab &amp; place</button>
         <button class="go actbtn" type="button" data-staged="show">Grab &amp; show</button>
       </div>
+    </div>
+
+    <div class="block cmd orchblock">
+      <h2>Orchestrator</h2>
+      <p class="sub">Astra plans each step for Dream-1; Fable and Astra check the cameras and retry. Write the goal in plain words.</p>
       <label class="sr" for="orchGoal">Goal for the orchestrator</label>
-      <textarea id="orchGoal" class="orchgoal" rows="2">pick up the orange card by the handle and hold it just above the table, then lift it up high so its back is completely visible, then put it back down</textarea>
-      <button class="go actbtn" id="orchBtn" type="button">Ask Astra to do it</button>
+      <textarea id="orchGoal" class="orchgoal" rows="3">pick up the orange card by the handle and hold it just above the table, then lift it up high so its back is completely visible, then put it back down</textarea>
+      <button class="actbtn orchbtn" id="orchBtn" type="button">Ask Astra to do it</button>
+    </div>
+
+    <details class="block cmd manual">
+      <summary>Manual command</summary>
       <div class="chips" id="chips">
         <button data-task="can you shuffle these cards using both arms" data-secs="120">Shuffle the cards</button>
         <button data-task="pick up the card from the handle and show it, then put it back down" data-secs="120">Show a card</button>
@@ -272,13 +307,8 @@
       <div class="row">
         <select id="cmdSecs" aria-label="How long to run"><option value="30">30 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120" selected>120 s</option></select>
         <button class="go" id="cmdGo">Send to Dream-1</button>
-        <button class="stop" id="cmdStop">Stop arms</button>
-        <button class="homebtn" id="homeBtn" type="button">Reset &amp; home</button>
       </div>
-      <div class="mode" id="cmdMode">Checking robot mode…</div>
-      <div class="mode" id="cmdModel"></div>
-      <div class="err" id="cmdErr"></div>
-    </div>
+    </details>
   </aside>
 
 </main>
