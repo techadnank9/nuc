@@ -299,7 +299,8 @@ def main() -> int:
     tunnel = None
     if not ON_STATION:
         tunnel = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ExitOnForwardFailure=yes", "-N",
-                                   "-L", f"{API_PORT}:127.0.0.1:8091", "-L", f"{VIEW_PORT}:127.0.0.1:8093", HOST])
+                                   "-L", f"{API_PORT}:127.0.0.1:8091", "-L", f"{VIEW_PORT}:127.0.0.1:8093", HOST],
+                                  start_new_session=True)  # Ctrl+C must not kill the tunnel the stop goes through
         time.sleep(2)
     code = 0
     try:
@@ -321,8 +322,15 @@ def main() -> int:
             http("POST", f"{API}/stop", timeout=30)
             http("POST", f"{API}/home", timeout=30)
             log("arms_home")
-        except Exception as e:  # noqa: BLE001 - whatever failed, the operator must know the arms may not be home
-            log("stop_failed", error=str(e), action="use the emergency stop or 'dreamcli robot down'")
+        except Exception as e:  # noqa: BLE001 - whatever failed, try once more straight over SSH, then shout
+            ok = not ON_STATION and subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST,
+                 "curl -sf -m 60 -X POST 127.0.0.1:8091/stop && curl -sf -m 60 -X POST 127.0.0.1:8091/home"],
+                capture_output=True, timeout=130).returncode == 0
+            if ok:
+                log("arms_home", via="ssh fallback", first_error=str(e))
+            else:
+                log("stop_failed", error=str(e), action="THE ARMS MAY STILL BE RUNNING: hit the emergency stop now")
         if tunnel:
             tunnel.terminate()
     return code
