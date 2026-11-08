@@ -151,6 +151,8 @@ ul { margin: 0; padding-left: 1.15em; display: grid; gap: 6px; }
   <p class="muted" style="font-size:.85rem">Model: i2rt <code>yam.xml</code> + <code>linear_4310.xml</code> combined by i2rt's <code>combine_arm_and_gripper_xml</code>. Motion: <code>gen_motion.py</code> (MuJoCo IK, 20 Hz). Card spot, stand and home pose are proposals; the real station layout may differ.</p>
 </main>
 
+<script type="application/json" id="motion-data"></script>
+<script type="application/json" id="mesh-data"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -163,7 +165,11 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
 const view = document.getElementById("view");
-const data = await (await fetch("motion.json")).json();
+const embedded = (id) => { const el = document.getElementById(id); return el && el.textContent.trim() ? JSON.parse(el.textContent) : null; };
+const showError = (e) => { const l = document.getElementById("loading"); if (l) l.textContent = "Could not load the arm: " + (e && e.message ? e.message : e); };
+window.addEventListener("error", (e) => showError(e.error || e.message));
+window.addEventListener("unhandledrejection", (e) => showError(e.reason));
+const data = embedded("motion-data") || await (await fetch("motion.json")).json();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -207,8 +213,8 @@ async function fetchBytes(file) {
   }
 }
 // meshes.json holds every STL as base64 (for hosts that do not serve .stl files); the .stl files are the same meshes.
-let packed = null;
-try { const r = await fetch("meshes.json"); if (r.ok) packed = await r.json(); } catch (e) { packed = null; }
+let packed = embedded("mesh-data");
+if (!packed) { try { const r = await fetch("meshes.json"); if (r.ok) packed = await r.json(); } catch (e) { packed = null; } }
 const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
 for (const [name, file] of Object.entries(data.files)) {
   const g = loader.parse(packed ? b64(packed[name]) : await fetchBytes(file));
