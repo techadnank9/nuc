@@ -598,7 +598,7 @@ document.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
   lastTrip = -1;
   $("cmdErr").textContent = "";
   const r = await fetch("/robot/act", { method: "POST", headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ act: b.dataset.act, rounds: Number($("rounds").value) }) });
+                                        body: JSON.stringify({ act: b.dataset.act, rounds: Number($("rounds").value), card: $("cardColor").value }) });
   if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
 });
 

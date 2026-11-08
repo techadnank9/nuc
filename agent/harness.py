@@ -226,12 +226,13 @@ ACTS = {"full": SHUFFLE_ROUNDS + SHOW, "shuffle": SHUFFLE_ROUNDS, "show": SHOW}
 ACT = ACTS["full"]
 
 
-async def run_act(on_step=None, name: str = "full", rounds: int = 1) -> dict:
+async def run_act(on_step=None, name: str = "full", rounds: int = 1, card: str = "right") -> dict:
     """Run one of ACTS on the station agent from the start position: "full" (shuffle three rounds, then show one
     card), "shuffle" or "show". Each step is a fresh episode; the arms stay connected throughout."""
     rounds = max(1, min(int(rounds), 5))
     shuffle = [(f"Shuffle, round {k} of {rounds}", SHUFFLE_TASK_, 30) for k in range(1, rounds + 1)]
-    steps = {"full": shuffle + SHOW, "shuffle": shuffle, "show": SHOW}.get(name, shuffle + SHOW)
+    # "full" = fine-tune shuffle, then the Grip first show (grab, confirm the hold, then lift): it holds better.
+    steps = {"full": shuffle, "shuffle": shuffle, "show": SHOW}.get(name, shuffle)
     global STOP_REQUESTED
     on_step = on_step or _noop
     STOP_REQUESTED = False
@@ -291,8 +292,10 @@ async def run_act(on_step=None, name: str = "full", rounds: int = 1) -> dict:
         await on_step("stop", "Done: arms hold, still connected")
     finally:
         await relay("resume")
-    await on_step("done", {"full": "Shuffle & show finished", "shuffle": "Shuffle finished",
-                           "show": "Show the card finished"}.get(name, "Finished"))
+    if name == "full":
+        await on_step("policy", "Shuffle done: now the grip-first show")
+        return await run_staged("show", card, on_step=on_step)
+    await on_step("done", {"shuffle": "Shuffle finished", "show": "Show the card finished"}.get(name, "Finished"))
     return {"ok": True}
 
 

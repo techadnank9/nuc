@@ -124,14 +124,15 @@ async def robot_act(request: web.Request) -> web.Response:
     try:
         body = await request.json()
         name, rounds = str(body.get("act", "full")), int(body.get("rounds", 1))
+        card = str(body.get("card", "right"))
     except (ValueError, AttributeError, TypeError):
-        name, rounds = "full", 1
+        name, rounds, card = "full", 1, "right"
     if COMMAND_LOCK.locked():
         return web.json_response({"error": "A command is running. Press Stop arms first, or wait."}, status=409)
 
     async def run() -> None:
         async with COMMAND_LOCK:
-            await harness.run_act(on_step=push_event, name=name, rounds=rounds)
+            await harness.run_act(on_step=push_event, name=name, rounds=rounds, card=card)
 
     asyncio.create_task(run())
     return web.json_response({"started": True, **mode_info()})
