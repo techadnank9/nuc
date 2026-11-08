@@ -150,13 +150,14 @@ async def agent_status() -> dict | None:
     return await _agent("GET", "/status", timeout=10)
 
 
-async def _run_on_agent(status: dict, task: str, budget: int) -> tuple[int, str]:
+async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = False,
+                        stop_at_end: bool = True) -> tuple[int, str]:
     """Run `task` on the running station agent: the arms stay powered and the model stays warm between commands.
 
     Idle agent: start a run (with our checkpoint). Running agent: change the prompt, which starts a fresh episode in
     about 2 s. After `budget` s the agent stops and the arms hold where they are (still on, ready for the next one).
     """
-    if status.get("state") in ("running", "starting") and status.get("prompt") == task:
+    if status.get("state") in ("running", "starting") and status.get("prompt") == task and not fresh:
         reply = status  # already switched to this task (the page sends it the moment the button is pressed)
     elif status.get("state") in ("running", "starting"):
         reply = await _agent("POST", "/prompt", {"prompt": task})
@@ -174,8 +175,55 @@ async def _run_on_agent(status: dict, task: str, budget: int) -> tuple[int, str]
             return (1, f"Dream-1 run ended: {err}") if err else (0, "")
         if now.get("prompt") != task:  # another command took over: this one is done
             return 0, ""
-    await _agent("POST", "/stop", timeout=70)
+    if stop_at_end:
+        await _agent("POST", "/stop", timeout=70)
     return 124, ""
+
+
+# One press of "Shuffle & show": the fine-tune's two trained instructions in a row (exact training sentences).
+SHUFFLE_TASK_ = "can you shuffle these cards using both arms"
+SHOW_TASK_ = "pick up the card from the handle and show it, then put it back down"
+ACT = [("Shuffle, round 1 of 3", SHUFFLE_TASK_, 30), ("Shuffle, round 2 of 3", SHUFFLE_TASK_, 30),
+       ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30), ("Show one card", SHOW_TASK_, 60)]
+
+
+async def run_act(on_step=None) -> dict:
+    """Shuffle three rounds, then show one card, back to back on the station agent (each round a fresh episode)."""
+    global STOP_REQUESTED
+    on_step = on_step or _noop
+    STOP_REQUESTED = False
+    if current_mode()[0] == "manual":
+        await on_step("failed", "No robot connected (started with DRAW_MODE=manual)")
+        return {"ok": False}
+    if await agent_status() is None:
+        await on_step("failed", "Start the station agent first (dreamcli robot up joint --view): the act needs the "
+                                "arms to stay connected between steps")
+        return {"ok": False}
+    await on_step("release", "Handing the cameras to Dream-1")
+    await relay("release")
+    try:
+        await on_step("policy", "Arms to the start position")
+        if (await agent_status() or {}).get("state") in ("running", "starting"):
+            await _agent("POST", "/stop", timeout=70)
+        await _agent("POST", "/home", timeout=70)  # every act starts from the same pose
+        for i, (label, task, secs) in enumerate(ACT):
+            if STOP_REQUESTED:
+                await on_step("stop", "Stopped: arms hold, still connected")
+                return {"ok": False}
+            await on_step("policy", f"{label}: {secs} s")
+            status = await agent_status() or {}
+            code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(ACT) - 1)
+            if STOP_REQUESTED:
+                await on_step("stop", "Stopped: arms hold, still connected")
+                return {"ok": False}
+            if code not in (0, 124):
+                await on_step("failed", out or "Dream-1 stopped")
+                return {"ok": False}
+        await on_step("stop", "Done: arms hold, still connected")
+    finally:
+        await relay("resume")
+    await on_step("done", "Shuffle & show finished")
+    return {"ok": True}
 
 
 async def run_policy(task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str]:
@@ -201,8 +249,13 @@ async def run_policy(task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str
     return await _sh(SSH + [remote], budget + 60)
 
 
+STOP_REQUESTED = False  # set by stop_robot(): ends a running Shuffle & show after the current step
+
+
 async def stop_robot() -> None:
     """Stop Dream-1 now. Station agent: the arms hold where they are. dreamcli run: SIGINT (home, switch off)."""
+    global STOP_REQUESTED
+    STOP_REQUESTED = True
     if await agent_status() is not None:
         await _agent("POST", "/stop", timeout=70)
         return

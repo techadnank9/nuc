@@ -119,6 +119,19 @@ async def robot_command(request: web.Request) -> web.Response:
     return web.json_response({"started": True, **mode_info()})
 
 
+async def robot_act(_: web.Request) -> web.Response:
+    """One press: shuffle three rounds, then show one card (harness.ACT)."""
+    if COMMAND_LOCK.locked():
+        return web.json_response({"error": "A command is running. Press Stop arms first, or wait."}, status=409)
+
+    async def run() -> None:
+        async with COMMAND_LOCK:
+            await harness.run_act(on_step=push_event)
+
+    asyncio.create_task(run())
+    return web.json_response({"started": True, **mode_info()})
+
+
 async def robot_stop(_: web.Request) -> web.Response:
     await push_event("stop", "Stop pressed: stopping Dream-1 now")
     await harness.stop_robot()
@@ -169,6 +182,7 @@ def main() -> None:
     app.router.add_get("/robot/status", robot_status)
     app.router.add_post("/robot/command", robot_command)
     app.router.add_post("/robot/stop", robot_stop)
+    app.router.add_post("/robot/act", robot_act)
     app.router.add_get("/robot/events", robot_events)
     app.on_startup.append(start_cameras)
     app.on_cleanup.append(stop_cameras)
