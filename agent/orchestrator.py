@@ -1,13 +1,15 @@
 """Orchestrator for Dream-1: a director picks short prompts, a tester watches the cameras and re-plans.
 
-    director (GPT-6 Astra, effort low;   goal + every attempt so far + the latest frames -> the next Dream-1 prompt
+    director (GPT-6 Astra, effort medium; goal + every attempt so far + the latest frames -> the next Dream-1 prompt
               Fable 5.1 if no OpenAI key or --director fable)
-    tester   (Fable 5.1, effort low)     at the end of each attempt: frames + station status ->
-                                         done | progress | failed | unsafe | unclear
+    tester   (Fable 5.1 + GPT-6 Astra in parallel, effort medium; Fable alone without an OpenAI key):
+             frames + station status -> done | progress | failed | unsafe | unclear
+             combined: either unsafe stops; done/failed only when both agree; otherwise the attempt runs on
 
 Why Astra directs: in NVIDIA's Astranomy study (CoRL 2026) GPT-6 Astra supervising a robot model raised success from
 36.8% to 66.5%, and it led every model tested on robot-scene judgment; `low` effort because higher effort barely
-changed success there while costing 2.6x the latency. Every call's time is logged ("s") to compare.
+changed success there while costing 2.6x the latency; medium is the best-work setting. Every call's time is logged
+("s") to compare.
 
 Each attempt sends one prompt and leaves that Dream-1 episode running while the tester checks every few seconds
 (--check-every, plus the ~5 s the check itself takes). progress / unclear keep it running untouched (resending would
@@ -35,6 +37,7 @@ Every decision is appended to agent/orchestrator_log.jsonl.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import subprocess
@@ -257,7 +260,7 @@ def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
             + (json.dumps(history, indent=1) if history else "nothing yet; this is the first step")
             + "\n\nThe frames above are the robot's cameras now" + ("" if frames else " (none yet: no run so far)") + ".")
     for _ in range(3):
-        d = (ask_astra(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "low", text, frames) if DIRECTOR == "astra"
+        d = (ask_astra(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "medium", text, frames) if DIRECTOR == "astra"
              else ask(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "medium", text, frames))
         if d["action"] != "prompt":
             return d
@@ -272,10 +275,41 @@ def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
     raise Stop("the director kept proposing prompts that cannot be sent")
 
 
+def combine(fable: dict, astra: dict) -> dict:
+    """Two testers' verdicts as one: either unsafe stops; done or failed only when both agree; otherwise keep going."""
+    a, b = fable["verdict"], astra["verdict"]
+    if "unsafe" in (a, b):
+        verdict = "unsafe"
+    elif a == b:
+        verdict = a
+    elif "progress" in (a, b):
+        verdict = "progress"  # one sees progress: let the attempt run on rather than stop a grasp in progress
+    else:
+        verdict = "unclear"
+    return {"verdict": verdict, "seen": f"Fable: {fable['seen']} | Astra: {astra['seen']}",
+            "suggestion": fable["suggestion"] or astra["suggestion"], "fable": a, "astra": b,
+            "s": max(fable.get("s", 0), astra.get("s", 0))}
+
+
 def test(prompt: str, s: dict, frames: dict[str, str], previous: str) -> dict:
+    """Fable checks the frames; with an OpenAI key Astra checks the same frames in parallel and the verdicts combine."""
     text = (f"Instruction being executed: {prompt}\nStation status: {status_line(s)}\n"
             f"The previous check said: {previous or 'nothing (first attempt)'}")
-    return ask(TESTER_SYSTEM, TESTER_SCHEMA, "low", text, frames)
+    if DIRECTOR != "astra":  # no OpenAI key: Fable alone
+        return ask(TESTER_SYSTEM, TESTER_SCHEMA, "medium", text, frames)
+    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+        f = pool.submit(ask, TESTER_SYSTEM, TESTER_SCHEMA, "medium", text, frames)
+        a = pool.submit(ask_astra, TESTER_SYSTEM, TESTER_SCHEMA, "medium", text, frames)
+        try:
+            fable = f.result()
+        except Stop:
+            raise
+        try:
+            astra = a.result()
+        except Exception as e:  # Astra unavailable: Fable's verdict alone
+            log("astra_tester_error", error=str(e)[:200])
+            return fable
+    return combine(fable, astra)
 
 
 def refused(s: dict) -> str:
@@ -362,7 +396,8 @@ def main() -> int:
     DIRECTOR = args.director
     if args.finetuned:
         DIRECTOR_SYSTEM += FINETUNED_NOTE
-    print(f"director: {ASTRA if DIRECTOR == 'astra' else MODEL}; tester: {MODEL}")
+    print(f"director: {ASTRA if DIRECTOR == 'astra' else MODEL}; "
+          f"tester: {MODEL + ' + ' + ASTRA if DIRECTOR == 'astra' else MODEL}")
 
     if not args.live:
         d = direct(args.goal, [], {})
