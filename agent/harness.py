@@ -170,7 +170,8 @@ async def _show_check(baseline: int) -> dict:
 
 
 async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = False,
-                        stop_at_end: bool = True, until_shown: bool = False) -> tuple[int, str]:
+                        stop_at_end: bool = True, until_shown: bool = False,
+                        grab_within_s: float | None = None) -> tuple[int, str]:
     """Run `task` on the running station agent: the arms stay powered and the model stays warm between commands.
 
     Idle agent: start a run (with our checkpoint). Running agent: change the prompt, which starts a fresh episode in
@@ -193,11 +194,16 @@ async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = Fals
         if until_shown and now.get("state") == "running":
             # One show is enough: stop once an arm has held a card up and put it back down (show_done.py).
             if baseline is None:
-                baseline = await _show_rows()
-            elif (await _show_check(baseline)).get("done"):
-                await _agent("POST", "/stop", timeout=70)
-                await _agent("POST", "/home", timeout=70)
-                return 0, "shown"
+                baseline, started = await _show_rows(), time.monotonic()
+            else:
+                seen = await _show_check(baseline)
+                if seen.get("done"):
+                    await _agent("POST", "/stop", timeout=70)
+                    await _agent("POST", "/home", timeout=70)
+                    return 0, "shown"
+                if grab_within_s and not seen.get("held") and time.monotonic() - started > grab_within_s:
+                    await _agent("POST", "/stop", timeout=70)  # no real grab in time: the caller retries
+                    return 3, "no hold"
         if now.get("state") not in ("running", "starting"):
             err = now.get("last_error")
             return (1, f"Dream-1 run ended: {err}") if err else (0, "")
@@ -214,6 +220,8 @@ SHOW_TASK_ = "pick up the card from the handle and show it, then put it back dow
 SHUFFLE_ROUNDS = [("Shuffle, round 1 of 3", SHUFFLE_TASK_, 30), ("Shuffle, round 2 of 3", SHUFFLE_TASK_, 30),
                   ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30)]
 SHOW = [("Show the card", SHOW_TASK_, 150)]
+SHOW_TRIES = 3     # Show the card: tries before giving up
+SHOW_GRAB_S = 90   # a try with no real grab (show_done.py "held") by then goes home and starts over
 ACTS = {"full": SHUFFLE_ROUNDS + SHOW, "shuffle": SHUFFLE_ROUNDS, "show": SHOW}
 ACT = ACTS["full"]
 
@@ -253,10 +261,27 @@ async def run_act(on_step=None, name: str = "full", rounds: int = 1) -> dict:
                 await _agent("POST", "/home", timeout=70)
             await on_step("policy", f"{label}: {secs} s")
             status = await agent_status() or {}
-            code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(steps) - 1,
-                                            until_shown=task == SHOW_TASK_)
-            if out == "shown":
-                await on_step("done", "Card shown and put back: arms home")
+            if task == SHOW_TASK_:
+                # Up to SHOW_TRIES tries: a try with no real grab within SHOW_GRAB_S goes home and starts over.
+                for attempt in range(1, SHOW_TRIES + 1):
+                    if attempt > 1:
+                        await on_step("policy", f"No grip yet: back home, try {attempt} of {SHOW_TRIES}")
+                        await _agent("POST", "/home", timeout=70)
+                    status = await agent_status() or {}
+                    code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=True,
+                                                    until_shown=True, grab_within_s=SHOW_GRAB_S)
+                    if STOP_REQUESTED or out != "no hold":
+                        break
+                if out == "shown":
+                    await on_step("done", f"Card shown and put back (try {attempt}): arms home")
+                elif out == "no hold" and not STOP_REQUESTED:
+                    await on_step("failed", f"No real grip in {SHOW_TRIES} tries: arms home")
+                    await _agent("POST", "/home", timeout=70)
+                    return {"ok": False}
+                if code == 3:
+                    code = 0
+            else:
+                code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(steps) - 1)
             if STOP_REQUESTED:
                 await on_step("stop", "Stopped: arms hold, still connected")
                 return {"ok": False}
