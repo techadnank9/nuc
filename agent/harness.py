@@ -249,6 +249,44 @@ async def run_policy(task: str = TASK, budget: int = BUDGET_S) -> tuple[int, str
     return await _sh(SSH + [remote], budget + 60)
 
 
+async def reset_home(on_step=None) -> dict:
+    """Stop whatever runs, reopen the arms if one faulted (agent reset), then move both arms to the start position."""
+    global STOP_REQUESTED
+    on_step = on_step or _noop
+    STOP_REQUESTED = True  # ends a running Shuffle & show too
+    status = await agent_status()
+    if status is None:
+        await stop_robot()  # dreamcli run: SIGINT homes and switches off by itself
+        await on_step("done", "Stopped: Dream-1 homes the arms and switches them off")
+        return {"ok": True}
+    if status.get("state") in ("running", "starting"):
+        await on_step("stop", "Stopping the current run")
+        await _agent("POST", "/stop", timeout=70)
+    for _ in range(30):  # wait out a stop or a home move in progress
+        status = await agent_status() or {}
+        if status.get("state") in ("idle", "error"):
+            break
+        await asyncio.sleep(1)
+    arms_ok = all((status.get("arms") or {}).values())
+    if status.get("state") == "error" or not arms_ok:
+        await on_step("policy", "Resetting the arms (reopening their drivers), then going home")
+        reply = await _agent("POST", "/reset", timeout=70)
+    else:
+        await on_step("policy", "Moving both arms to the start position")
+        reply = await _agent("POST", "/home", timeout=70)
+    for _ in range(40):
+        status = await agent_status() or {}
+        if status.get("state") in ("idle", "error"):
+            break
+        await asyncio.sleep(1)
+    if (reply or {}).get("error") or status.get("state") == "error":
+        why = (reply or {}).get("error") or status.get("last_error") or "unknown"
+        await on_step("failed", f"Reset or home failed: {why}")
+        return {"ok": False}
+    await on_step("done", "Arms at the start position, still connected")
+    return {"ok": True}
+
+
 STOP_REQUESTED = False  # set by stop_robot(): ends a running Shuffle & show after the current step
 
 

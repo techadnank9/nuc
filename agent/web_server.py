@@ -132,6 +132,13 @@ async def robot_act(_: web.Request) -> web.Response:
     return web.json_response({"started": True, **mode_info()})
 
 
+async def robot_home(_: web.Request) -> web.Response:
+    """Reset & home: stop anything running, reopen faulted arms, move both arms to the start position."""
+    await push_event("check", "Reset & home pressed")
+    asyncio.create_task(harness.reset_home(on_step=push_event))
+    return web.json_response({"started": True})
+
+
 async def robot_stop(_: web.Request) -> web.Response:
     await push_event("stop", "Stop pressed: stopping Dream-1 now")
     await harness.stop_robot()
@@ -183,6 +190,7 @@ def main() -> None:
     app.router.add_post("/robot/command", robot_command)
     app.router.add_post("/robot/stop", robot_stop)
     app.router.add_post("/robot/act", robot_act)
+    app.router.add_post("/robot/home", robot_home)
     app.router.add_get("/robot/events", robot_events)
     app.on_startup.append(start_cameras)
     app.on_cleanup.append(stop_cameras)

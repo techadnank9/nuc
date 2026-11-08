@@ -143,6 +143,7 @@
   .livebtn.on { background:var(--ember); color:#2c0e06; }
   .livebtn:disabled { opacity:.4; cursor:default; }
   .cmd .mode { font-size:12.5px; color:var(--dim); margin-top:8px; }
+  .homebtn { border-radius:var(--r-ctl); min-height:44px; padding:0 14px; font-weight:600; cursor:pointer; background:transparent; color:var(--parchment); border:2px solid var(--jade); }
   .actbtn { width:100%; min-height:52px; margin:4px 0 12px; font-size:1.05rem; }
   .cmd .mode.live { color:var(--ember); font-weight:600; }
   .cmd .err { color:#f3c2b4; font-size:13px; min-height:18px; margin-top:6px; }
@@ -249,6 +250,7 @@
         <select id="cmdSecs" aria-label="How long to run"><option value="30">30 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120" selected>120 s</option></select>
         <button class="go" id="cmdGo">Send to Dream-1</button>
         <button class="stop" id="cmdStop">Stop arms</button>
+        <button class="homebtn" id="homeBtn" type="button">Reset &amp; home</button>
       </div>
       <div class="mode" id="cmdMode">Checking robot mode…</div>
       <div class="mode" id="cmdModel"></div>
@@ -519,6 +521,7 @@ $("cmdGo").onclick = async () => {
 };
 $("cmdText").addEventListener("input", () => $("cmdErr").textContent = "");
 $("cmdStop").onclick = async () => { await fetch("/robot/stop", { method: "POST" }); };
+$("homeBtn").onclick = async () => { await fetch("/robot/home", { method: "POST" }); };
 $("actBtn").onclick = async () => {
   lastTrip = -1;
   $("cmdErr").textContent = "";
