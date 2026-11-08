@@ -277,9 +277,14 @@
 
     <div class="block cmd">
       <h2>Grip first</h2>
-      <p class="sub">Base Dream-1: grabs the card, confirms the grip, then moves it.</p>
+      <p class="sub">Base Dream-1: grabs the card, confirms the grip, then moves it. Pick the card by position (red and orange look alike to it).</p>
       <label class="rounds" for="cardColor">Card
-        <select id="cardColor"><option>orange</option><option>red</option><option>blue</option><option>black</option></select>
+        <select id="cardColor">
+          <option value="right" selected>nearest the right arm</option>
+          <option value="left">nearest the left arm</option>
+          <option value="blue">blue</option>
+          <option value="black">black</option>
+        </select>
       </label>
       <div class="actrow">
         <button class="go actbtn" type="button" data-staged="place">Grab &amp; place</button>

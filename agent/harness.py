@@ -368,12 +368,17 @@ async def run_staged(kind: str, color: str = "orange", on_step=None) -> dict:
     global STOP_REQUESTED
     on_step = on_step or _noop
     STOP_REQUESTED = False
-    color = color if color in ("orange", "red", "blue", "black") else "orange"
-    grab = f"pick up the {color} card by the handle and hold it just above the table"
-    then = {"place": f"keep holding the {color} card and carry it to the empty space at the far end of the row, "
+    # Which card, as Dream-1 is told: by position (reliable) or by a colour no other card on the table shares.
+    target = {"left": "the card nearest the left arm", "right": "the card nearest the right arm",
+              "blue": "the blue card", "black": "the black card", "orange": "the orange card",
+              "red": "the red card"}.get(color, "the card nearest the right arm")
+    held = "the card"
+    grab = f"pick up {target} by the handle and hold it just above the table"
+    then = {"place": f"keep holding {held} and carry it to the empty space at the far end of the row, "
                      "then put it down on the table and open the gripper",
-            "show": f"keep holding the {color} card and lift it up high so its back is completely visible, "
+            "show": f"keep holding {held} and lift it up high so its back is completely visible, "
                     "then put it back down on the table and open the gripper"}.get(kind)
+    color = target.removeprefix("the ")
     if then is None or await agent_status() is None:
         await on_step("failed", "Start the station agent first (dreamcli robot up joint --view)")
         return {"ok": False}
@@ -382,7 +387,7 @@ async def run_staged(kind: str, color: str = "orange", on_step=None) -> dict:
         for attempt in range(1, GRAB_TRIES + 1):
             if STOP_REQUESTED:
                 break
-            await on_step("policy", f"Grab the {color} card, try {attempt} of {GRAB_TRIES}")
+            await on_step("policy", f"Grab {target}, try {attempt} of {GRAB_TRIES}")
             await _agent("POST", "/stop", timeout=70)
             await _agent("POST", "/home", timeout=70)
             reply = await _agent("POST", "/start", {"prompt": grab, "checkpoint": BASE_MODEL}, timeout=70)
