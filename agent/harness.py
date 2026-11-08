@@ -150,8 +150,27 @@ async def agent_status() -> dict | None:
     return await _agent("GET", "/status", timeout=10)
 
 
+REMOTE_SHOW_DONE = "~/dream-env/bin/python ~/nuc-tools/show_done.py"
+
+
+async def _show_rows() -> int:
+    code, out = await _sh(SSH + [f"{REMOTE_SHOW_DONE} count"], 15)
+    try:
+        return int(out.strip().splitlines()[-1]) if code == 0 else 0
+    except (IndexError, ValueError):
+        return 0
+
+
+async def _show_check(baseline: int) -> dict:
+    code, out = await _sh(SSH + [f"{REMOTE_SHOW_DONE} check {baseline}"], 15)
+    try:
+        return json.loads(out.strip().splitlines()[-1]) if code == 0 else {}
+    except (IndexError, json.JSONDecodeError):
+        return {}
+
+
 async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = False,
-                        stop_at_end: bool = True) -> tuple[int, str]:
+                        stop_at_end: bool = True, until_shown: bool = False) -> tuple[int, str]:
     """Run `task` on the running station agent: the arms stay powered and the model stays warm between commands.
 
     Idle agent: start a run (with our checkpoint). Running agent: change the prompt, which starts a fresh episode in
@@ -167,9 +186,18 @@ async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = Fals
     if not reply or reply.get("error"):
         return 1, f"the station agent refused: {(reply or {}).get('error', 'no answer')}"
     end = time.monotonic() + budget
+    baseline = None
     while time.monotonic() < end:
         await asyncio.sleep(2)
         now = await agent_status() or {}
+        if until_shown and now.get("state") == "running":
+            # One show is enough: stop once an arm has held a card up and put it back down (show_done.py).
+            if baseline is None:
+                baseline = await _show_rows()
+            elif (await _show_check(baseline)).get("done"):
+                await _agent("POST", "/stop", timeout=70)
+                await _agent("POST", "/home", timeout=70)
+                return 0, "shown"
         if now.get("state") not in ("running", "starting"):
             err = now.get("last_error")
             return (1, f"Dream-1 run ended: {err}") if err else (0, "")
@@ -225,7 +253,10 @@ async def run_act(on_step=None, name: str = "full", rounds: int = 1) -> dict:
                 await _agent("POST", "/home", timeout=70)
             await on_step("policy", f"{label}: {secs} s")
             status = await agent_status() or {}
-            code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(steps) - 1)
+            code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(steps) - 1,
+                                            until_shown=task == SHOW_TASK_)
+            if out == "shown":
+                await on_step("done", "Card shown and put back: arms home")
             if STOP_REQUESTED:
                 await on_step("stop", "Stopped: arms hold, still connected")
                 return {"ok": False}
