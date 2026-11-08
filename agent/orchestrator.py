@@ -1,12 +1,14 @@
 """Claude Fable orchestrator for Dream-1: a director picks short prompts, a tester watches the cameras and re-plans.
 
-    director (Fable 5.1, effort medium)  goal + what happened so far + the latest frames -> next short Dream-1 prompt
-    tester   (Fable 5.1, effort low)     every CHECK_S seconds while a prompt runs: frames + station status ->
-                                         on_track | off_track | done | unsafe | unclear
+    director (Fable 5.1, effort medium)  goal + every attempt so far + the latest frames -> the next Dream-1 prompt
+    tester   (Fable 5.1, effort low)     at the end of each attempt: frames + station status ->
+                                         done | progress | failed | unsafe | unclear
 
-Two off_track verdicts in a row, a done, or a prompt running out of time go back to the director, which sends a new
-prompt (a fresh Dream-1 episode, ~2 s ramp) or finishes. The loop and every safety stop are plain code: the arms stop
-and go home on an unsafe verdict, a dead arm, a station error, Ctrl+C, or the prompt/time caps.
+Each attempt runs one prompt for --attempt-seconds (30 by default), then the tester looks once and the director sends
+the same prompt again (progress), a reworded one (failed, or Dream refused it) or finishes (done). The loop and every
+safety stop are plain code, checked every 2 s during an attempt: the arms stop and go home on an unsafe verdict, a
+dead arm, a station error, Ctrl+C, or the attempt/time caps. The e-stop is still the real safety: the tester only
+looks once per attempt.
 
 It drives the station agent through the API show_sequence.py uses (port 8091) and reads the frames Dream-1 saw from
 its view page (port 8093), both tunnelled over SSH. The person at the emergency stop starts the agent first:
@@ -29,7 +31,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -59,59 +60,57 @@ ON_STATION = _station_agent_here()
 API_PORT, VIEW_PORT = (8091, 8093) if ON_STATION else (8092, 8094)
 API, VIEW = f"http://127.0.0.1:{API_PORT}", f"http://127.0.0.1:{VIEW_PORT}"
 MODEL = "claude-fable-5-1"
-CHECK_S = 4.0  # pause between tester checks (each check itself takes a few seconds)
-EXTEND_S = 30.0  # extra time a step may run past its planned seconds while the tester keeps saying on_track
+POLL_S = 2.0  # how often the code-side checks (arms alive, station error) run during an attempt
 LOG = Path(__file__).resolve().parent / "orchestrator_log.jsonl"
 
-# Dream's filter refused "hold up ... to show it" twice on Nov 7; keep prompts to tabletop actions.
-BANNED = re.compile(r"\b(show|showing|hold(ing)? (it |them )?up|reveal|present|camera|audience|person|face the)\b", re.I)
-MAX_PROMPT_CHARS = 120
+MAX_PROMPT_CHARS = 140
 
 DIRECTOR_SYSTEM = """You direct Dream-1, a vision-language-action model driving two YAM robot arms with parallel grippers \
 over a table. You never move the arms yourself: you choose the next instruction Dream-1 receives.
 
-Dream-1 does best with one short, concrete sentence: one object named by colour and shape, one action, one \
-destination it can see ("pick up the red block and place it to the right of the green block"). It does badly with \
-vague, repeated or two-handed goals ("shuffle", "tidy up"). Break the goal into such single steps and send one at a \
-time. If a step failed, change the wording (a clearer object name, a nearer or more visible destination, a smaller \
-sub-step) rather than resending it. Every new prompt restarts Dream-1's episode from scratch, so keep calling each \
-object by the same name in every prompt (unless the tester showed that name picks the wrong object), and do not \
-reword a step that was making progress: if it ran out of time while on track, send the same prompt again. Never ask Dream-1 to hold something up, show or reveal it, or aim at a camera or \
-a person: Dream's API refuses those.
+Prompts that worked on this robot today:
+- "pick up the red block and put it beside the green one"
+- "pick up the red card by the handle and hold it flipped up to show its back"
+Write in that style: one sentence, "pick up the <colour> <object>" (+ where to grasp it, e.g. "by the handle"), then \
+one result it can see ("put it beside the green one", "hold it flipped up to show its back"). Avoid vague or \
+repeated goals ("shuffle", "tidy up"): break the goal into single steps like these and send one at a time.
 
-Reply with JSON only. action "prompt" sends `prompt` for `seconds` (15-45; a single pick and place needs about 35; \
-a step that stays on track is given extra time automatically). \
-action "finish" when the goal is met. action "give_up" when the history shows it is not working (the same failure \
-after three different wordings) or the scene makes it impossible."""
+Each attempt runs your prompt for a fixed time, then a tester looks at the cameras and reports done, progress, \
+failed or unclear. After progress or unclear, send the same prompt again (the arm continues from where it is). After \
+failed, change one thing: a clearer object name, a grasp point, a nearer or more visible result, or a smaller step. \
+Keep calling each object by the same name in every prompt unless the tester showed that name picks the wrong object.
+
+Reply with JSON only. action "prompt" sends `prompt` for the next attempt. action "finish" when the goal is met. \
+action "give_up" when the history shows it is not working (the same failure after three different wordings) or the \
+scene makes it impossible."""
 
 TESTER_SYSTEM = """You check a robot while it works. You get the latest camera frames from the robot (overhead and \
 the two wrist cameras), the instruction it is executing, and the station's status. Judge only from what you see.
 
-verdict:
-- on_track: it is making progress on the instruction, or is plausibly about to.
-- off_track: it is clearly doing something else, is stuck (same pose as before with no progress), grabbed the wrong \
-object, or dropped the object.
+This check comes at the end of an attempt. verdict:
 - done: the instruction is visibly complete.
+- progress: not finished, but closer than before (approaching, grasping or carrying the right object).
+- failed: it is doing something else, is stuck where the previous check saw it, grabbed the wrong object, or \
+dropped the object.
 - unsafe: a person's hand or body is in the workspace, an arm is pressing on something that is not the object, \
 anything fell off the table, or the arms are colliding with each other. Prefer unsafe when unsure about safety.
 - unclear: the frames do not let you tell.
-Put what you see in `seen` (one sentence) and, for off_track, a better instruction in `suggestion`."""
+Put what you see in `seen` (one sentence) and, for failed, a better instruction in `suggestion`."""
 
 DIRECTOR_SCHEMA = {
     "type": "object",
     "properties": {
         "action": {"type": "string", "enum": ["prompt", "finish", "give_up"]},
         "prompt": {"type": "string"},
-        "seconds": {"type": "integer"},
         "why": {"type": "string"},
     },
-    "required": ["action", "prompt", "seconds", "why"],
+    "required": ["action", "prompt", "why"],
     "additionalProperties": False,
 }
 TESTER_SCHEMA = {
     "type": "object",
     "properties": {
-        "verdict": {"type": "string", "enum": ["on_track", "off_track", "done", "unsafe", "unclear"]},
+        "verdict": {"type": "string", "enum": ["done", "progress", "failed", "unsafe", "unclear"]},
         "seen": {"type": "string"},
         "suggestion": {"type": "string"},
     },
@@ -205,28 +204,28 @@ def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
             + "\n\nThe frames above are the robot's cameras now" + ("" if frames else " (none yet: no run so far)") + ".")
     for _ in range(2):
         d = ask(DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, "medium", text, frames)
-        if d["action"] != "prompt":
+        if d["action"] != "prompt" or len(d["prompt"]) <= MAX_PROMPT_CHARS:
             return d
-        problem = ("longer than %d characters" % MAX_PROMPT_CHARS if len(d["prompt"]) > MAX_PROMPT_CHARS
-                   else "uses words Dream's filter refuses (show / hold up / reveal / camera / person)"
-                   if BANNED.search(d["prompt"]) else "")
-        if not problem:
-            d["seconds"] = max(15, min(45, int(d["seconds"])))
-            return d
-        log("director_prompt_rejected", prompt=d["prompt"], problem=problem)
-        text += f"\n\nYour prompt {d['prompt']!r} was rejected: it is {problem}. Give another."
-    raise Stop("the director kept proposing prompts that cannot be sent")
+        log("director_prompt_rejected", prompt=d["prompt"], problem=f"longer than {MAX_PROMPT_CHARS} characters")
+        text += f"\n\nYour prompt {d['prompt']!r} is longer than {MAX_PROMPT_CHARS} characters. Give a shorter one."
+    raise Stop("the director kept proposing prompts that are too long")
 
 
 def test(prompt: str, s: dict, frames: dict[str, str], previous: str) -> dict:
     text = (f"Instruction being executed: {prompt}\nStation status: {status_line(s)}\n"
-            f"Your previous check said: {previous or 'nothing (first check)'}")
+            f"The previous check said: {previous or 'nothing (first attempt)'}")
     return ask(TESTER_SYSTEM, TESTER_SCHEMA, "low", text, frames)
+
+
+def refused(s: dict) -> str:
+    """Dream's API refusing the prompt (DA-4000) ends the episode: the director rewords instead of a safety stop."""
+    err = str(s.get("last_error") or "")
+    return err if "refus" in err.lower() else ""
 
 
 # --- the loop -------------------------------------------------------------------------------------------------------
 
-def run(goal: str, max_prompts: int, max_total_s: float) -> None:
+def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float) -> None:
     s = status()
     if s.get("state") not in ("idle", "running"):
         raise Stop(f"the station agent is {s.get('state')}, not idle")
@@ -234,57 +233,51 @@ def run(goal: str, max_prompts: int, max_total_s: float) -> None:
     history: list[dict] = []
     started = time.monotonic()
     running = s.get("state") == "running"
-    for n in range(1, max_prompts + 1):
+    previous = ""
+    for n in range(1, max_attempts + 1):
+        if time.monotonic() - started > max_total_s:
+            raise Stop(f"total time cap of {max_total_s:.0f} s reached")
         d = direct(goal, history, latest_frames())
-        log("director", step=n, **d)
+        log("director", attempt=n, **d)
         if d["action"] != "prompt":
             return
         if running:
-            http("POST", f"{API}/prompt", {"prompt": d["prompt"]})  # a fresh episode with this prompt
+            http("POST", f"{API}/prompt", {"prompt": d["prompt"]})  # a fresh episode; the arm goes on from where it is
         else:
             http("POST", f"{API}/start", {"prompt": d["prompt"]})
             running = True
-        step_start = time.monotonic()
-        step_end, off, previous, outcome = step_start + d["seconds"], 0, "", "timed out"
-        notes: list[str] = []
-        while True:
-            if time.monotonic() >= step_end:
-                # Changing the prompt restarts Dream-1's episode: a step still on track keeps going, up to EXTEND_S more.
-                if notes and notes[-1].startswith("on_track") and time.monotonic() < step_start + d["seconds"] + EXTEND_S:
-                    step_end = time.monotonic() + CHECK_S
-                else:
-                    break
-            if time.monotonic() - started > max_total_s:
-                raise Stop(f"total time cap of {max_total_s:.0f} s reached")
-            time.sleep(CHECK_S)
+        # Run the attempt; the code-side checks (arms alive, station error) still run every POLL_S.
+        end, why_ended = time.monotonic() + attempt_s, ""
+        while time.monotonic() < end:
+            time.sleep(POLL_S)
             s = status()
+            if why_ended := refused(s):
+                break
             check_station(s)
-            frames = latest_frames()
-            if not frames:
-                continue  # the episode is still ramping up
-            t = test(d["prompt"], s, frames, previous)
-            log("tester", step=n, **t)
-            previous = f"{t['verdict']}: {t['seen']}"
-            notes.append(previous)
-            if t["verdict"] == "unsafe":
-                raise Stop(f"tester: unsafe: {t['seen']}")
-            if t["verdict"] == "done":
-                outcome = "done"
+            if s.get("state") != "running":
+                why_ended = f"the episode ended early (station {s.get('state')})"
                 break
-            off = off + 1 if t["verdict"] == "off_track" else 0
-            if off >= 2:  # one off_track can be a frame mid-motion; two in a row is a pattern
-                outcome = f"off track; tester suggests: {t['suggestion']}"
-                break
-        history.append({"prompt": d["prompt"], "seconds": d["seconds"], "outcome": outcome, "checks": notes[-4:]})
-    raise Stop(f"prompt cap of {max_prompts} reached")
+        if why_ended:
+            log("attempt_ended", attempt=n, reason=why_ended)
+            history.append({"attempt": n, "prompt": d["prompt"], "result": why_ended})
+            running = s.get("state") == "running"
+            continue
+        t = test(d["prompt"], s, latest_frames(), previous)
+        log("tester", attempt=n, **t)
+        previous = f"{t['verdict']}: {t['seen']}"
+        history.append({"attempt": n, "prompt": d["prompt"], "result": previous, "suggestion": t["suggestion"]})
+        if t["verdict"] == "unsafe":
+            raise Stop(f"tester: unsafe: {t['seen']}")
+    raise Stop(f"attempt cap of {max_attempts} reached")
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--goal", required=True, help="what the arms should achieve, in plain words")
     p.add_argument("--live", action="store_true", help="send prompts to the arms (without it: plan the first step only)")
-    p.add_argument("--max-prompts", type=int, default=6)
-    p.add_argument("--max-seconds", type=float, default=180)
+    p.add_argument("--attempt-seconds", type=float, default=30, help="how long each prompt runs before a check")
+    p.add_argument("--max-attempts", type=int, default=6)
+    p.add_argument("--max-seconds", type=float, default=240)
     args = p.parse_args()
 
     if not args.live:
@@ -300,8 +293,9 @@ def main() -> int:
         time.sleep(2)
     code = 0
     try:
-        log("start", goal=args.goal, max_prompts=args.max_prompts, max_seconds=args.max_seconds)
-        run(args.goal, args.max_prompts, args.max_seconds)
+        log("start", goal=args.goal, attempt_s=args.attempt_seconds, max_attempts=args.max_attempts,
+            max_seconds=args.max_seconds)
+        run(args.goal, args.max_attempts, args.max_seconds, args.attempt_seconds)
         log("finished")
     except Stop as e:
         log("stop", reason=str(e))
