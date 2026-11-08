@@ -102,7 +102,14 @@ async def robot_command(request: web.Request) -> web.Response:
     if not task:
         return web.json_response({"error": "Write what the arms should do first."}, status=400)
     if COMMAND_LOCK.locked():
-        return web.json_response({"error": "A command is already running. Stop it or wait for it to finish."}, status=409)
+        status = await harness.agent_status()
+        if status is None or status.get("state") not in ("running", "starting"):
+            return web.json_response({"error": "A command is already running. Stop it or wait for it to finish."},
+                                     status=409)
+        # Station agent running: switch to the new task right now (~2 s); the earlier command sees the new prompt
+        # and finishes, then this one takes over the lock and keeps watching.
+        await harness._agent("POST", "/prompt", {"prompt": task})
+        await push_event("check", f'Switched to: "{task}"')
 
     async def run() -> None:
         async with COMMAND_LOCK:

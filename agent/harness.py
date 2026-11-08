@@ -156,7 +156,9 @@ async def _run_on_agent(status: dict, task: str, budget: int) -> tuple[int, str]
     Idle agent: start a run (with our checkpoint). Running agent: change the prompt, which starts a fresh episode in
     about 2 s. After `budget` s the agent stops and the arms hold where they are (still on, ready for the next one).
     """
-    if status.get("state") in ("running", "starting"):
+    if status.get("state") in ("running", "starting") and status.get("prompt") == task:
+        reply = status  # already switched to this task (the page sends it the moment the button is pressed)
+    elif status.get("state") in ("running", "starting"):
         reply = await _agent("POST", "/prompt", {"prompt": task})
     else:
         reply = await _agent("POST", "/start", {"prompt": task, **({"checkpoint": CHECKPOINT} if CHECKPOINT else {})},
