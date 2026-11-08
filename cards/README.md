@@ -1,44 +1,71 @@
-# Sun XIX fortune card
+# Cards and props
 
-Generate and validate using the existing environment; no installation required:
+Everything the arm touches: the fortune deck, the deck tray and the reveal stand. All parts are code-generated
+(Python, manifold3d + trimesh), checked automatically, and print in PLA with no supports.
 
-```sh
-.venv/bin/python generate_card.py
-.venv/bin/python check_card.py
+![The deck](out/deck/preview_deck.png)
+
+## The deck (v3): print these
+
+| Card | Tarot | Upright meaning | Print in | First 0.6 mm (face) | File |
+|---|---|---|---|---|---|
+| The Tower | XVI | sudden upheaval, broken pride | **red** | black | `out/deck/card_16_tower.3mf` |
+| Ace of Wands | Ace | inspiration, new opportunities, growth | **red** | black | `out/deck/card_101_ace_of_wands.3mf` |
+| The Star | XVII | hope, faith, rejuvenation | **blue** | black | `out/deck/card_17_star.3mf` |
+| Ace of Cups | Ace | love, new feelings, compassion | **blue** | black | `out/deck/card_102_ace_of_cups.3mf` |
+| The Sun | XIX | joy, success, celebration, positivity | **orange** | black | `out/deck/card_19_sun.3mf` |
+| Judgement | XX | reflection, reckoning, awakening | **orange** | black | `out/deck/card_20_judgement.3mf` |
+| The Moon | XVIII | the unconscious, illusions, intuition | **black** | orange | `out/deck/card_18_moon.3mf` |
+| The World | XXI | completion, integration, accomplishment | **black** | orange | `out/deck/card_21_world.3mf` |
+
+Eight cards, two per filament colour, paired by meaning (wands = fire = red, cups = water = blue). The agent's
+deck (`agent/cards.py`) lists the same eight.
+
+- **Back: the same design on every card**, in the card's colour: "ROBOT / FORTUNE TELLER", a sun-and-moon emblem,
+  three stars and a border, raised 0.6 mm. The grip handle stands out of this side. The colours mean the backs
+  are not identical from above, but they let a camera tell which card was drawn.
+- **Face: one per card.** Numeral, one simple symbol and the name, engraved 0.6 mm.
+- **Handle: v2's block shape, smooth, with a low dome and a crystal ball.** The 30 × 18 × 14 mm block keeps its
+  two flat grip faces 14 mm apart (the shape base Dream-1 picked up on Nov 7), but **without v2's friction ribs**.
+  A 7 mm low dome replaces the flat top, and a 17 mm crystal ball outline is engraved 0.6 mm on both faces,
+  covering the dome. About 80% of each grip face stays flat (`check_deck.py` reports it). Card 63 × 113 × 14 mm.
+  **Untested on the arm:** smooth faces have less friction; `GRIP_RIBS=1` brings the ribs back (with a smaller ball).
+- **No tag sticker:** the backs are truly identical. (`TAG_POCKET = True` in `generate_deck.py` adds a
+  27 × 27 mm pocket for an ArUco sticker, if the harness needs to read the card by tag again.)
+
+### Printing
+
+- **Face down** on the bed, as exported (the engraved face is on the bed, the handle points up). No supports.
+- PLA, 0.2 mm layers, 15 to 20% infill, 3 walls. About 7 to 10 g per card.
+- **Colours:** print each card in its colour (table above) and **swap filament at 0.6 mm** (after layer 3, the
+  face skin) as listed: the face then shows the symbol, name and crystal ball in the card's colour on a black
+  face (orange face for the black Moon card).
+- Matte filament if you have it: shiny PLA confuses the depth cameras.
+
+### Rebuild
+
+```bash
+cd cards
+python3 -m venv .venv && .venv/bin/pip install trimesh manifold3d numpy shapely matplotlib
+.venv/bin/python generate_deck.py                 # all eight; or --only 16,101
+.venv/bin/python check_deck.py                    # needs out/card_v2.stl as the handle reference
 ```
 
-Outputs are `out/card_19_sun.stl`, `out/card_19_sun.3mf`, and
-`out/preview_front.png`, `preview_back.png`, `preview_side.png`, and
-`preview_grip.png`. All dimensions are millimetres; 3MF explicitly records the
-units. The previews render the actual mesh; side views show its center section.
-The gripper fingers are schematic, since their dimensions are not in the spec.
+Add a card: add it to `DECK` and `COLORS`, draw its symbol in `symbol()` in `generate_deck.py` (keep strokes at least
+1.4 mm wide), then rebuild and check. Also add it to `agent/cards.py` so the Fortune Teller can read it.
 
-The body is **63 × 88 × 4 mm**, with **3 mm corner radii**. A centered
-**30 × 18 × 14 mm** handle extends above its top edge, giving overall dimensions
-of **63 × 106 × 14 mm**. Its rear grip lands are flush with the back at **Z=0**;
-its front lands sit at **Z=14**, **10 mm proud** of the card front. The top has
-**2 mm, 45° chamfers** on all four edges. Horizontal grip lands have **0.4 mm
-relief**, defined by recessed triangular channels on both faces (1.6 mm pitch,
-0.8 mm flat lands). This keeps the opposing contact planes exactly 14 mm apart
-without ribs sticking below the bed. The bottom front edge has a **0.8 mm, 45°
-bevel**; the rear outline remains flat.
+## Deck tray and reveal stand (v2)
 
-The front carries a **1 mm raised** sun (18 mm diameter disc and 12 rays,
-36 mm outer diameter) and a bar-built **XIX**. The lower back has a
-**30 × 30 × 0.6 mm** square pocket for a printed ArUco sticker with **marker ID
-19**. The sticker itself is not generated; use the marker dictionary configured
-in the station's vision software.
+| Part | What | File |
+|---|---|---|
+| Deck tray | Cards lean back 15°; the front card's handle is always in the same spot | `out/deck_tray.3mf` |
+| Reveal stand | 40 mm funnel into a 6 mm slot; the card ends up at 60° facing the guest | `out/reveal_stand.3mf` |
 
-Print in **PLA**, at **0.2 mm layer height**, **20% infill**, **no supports**.
-Use the supplied orientation, with the flat back on the bed at **Z=0**. Enable
-bridge settings: the pocket's first roof layer bridges 30 mm, so bridge cooling
-and calibration matter. The chamfers and shallow rib channels use 45° slopes.
-The checker reports the requested rough mass estimate using solid volume ×
-1.24 g/cm³ × 20%; actual sliced mass will be higher because of walls and skins.
+Spec: `SPEC_V2.md`. Rebuild: `.venv/bin/python generate_v2.py && .venv/bin/python check_v2.py` (also writes
+`out/card_v2.stl`, the handle reference). `generate_card.py` and `check_card.py` are card v1, kept because the
+v2 scripts import their helpers.
 
-The thick handle gives the parallel fingers broad landing faces instead of
-asking them to grasp a 4 mm card. A 14 mm grip inside a 100 mm opening leaves
-43 mm of geometric centering margin on either side. The top chamfers guide a
-misaligned finger toward a face, while the ribs provide friction. The flush
-back permits flat printing and the bottom bevel helps insertion into a rack.
-This geometric clearance is not a measured grasp-success guarantee.
+## History
+
+`CARD_PROCESS.md` tells how the card was designed, printed and tested (v1 → v2 → this deck). `SPEC.md` is the v1
+spec with the gripper facts every version is built on.
