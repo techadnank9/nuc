@@ -119,14 +119,18 @@ async def robot_command(request: web.Request) -> web.Response:
     return web.json_response({"started": True, **mode_info()})
 
 
-async def robot_act(_: web.Request) -> web.Response:
-    """One press: shuffle three rounds, then show one card (harness.ACT)."""
+async def robot_act(request: web.Request) -> web.Response:
+    """One press: "full" (shuffle three rounds, then show one card), "shuffle" or "show" (harness.ACTS)."""
+    try:
+        name = str((await request.json()).get("act", "full"))
+    except (ValueError, AttributeError):
+        name = "full"
     if COMMAND_LOCK.locked():
         return web.json_response({"error": "A command is running. Press Stop arms first, or wait."}, status=409)
 
     async def run() -> None:
         async with COMMAND_LOCK:
-            await harness.run_act(on_step=push_event)
+            await harness.run_act(on_step=push_event, name=name)
 
     asyncio.create_task(run())
     return web.json_response({"started": True, **mode_info()})

@@ -183,12 +183,17 @@ async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = Fals
 # One press of "Shuffle & show": the fine-tune's two trained instructions in a row (exact training sentences).
 SHUFFLE_TASK_ = "can you shuffle these cards using both arms"
 SHOW_TASK_ = "pick up the card from the handle and show it, then put it back down"
-ACT = [("Shuffle, round 1 of 3", SHUFFLE_TASK_, 30), ("Shuffle, round 2 of 3", SHUFFLE_TASK_, 30),
-       ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30), ("Show one card", SHOW_TASK_, 90)]
+SHUFFLE_ROUNDS = [("Shuffle, round 1 of 3", SHUFFLE_TASK_, 30), ("Shuffle, round 2 of 3", SHUFFLE_TASK_, 30),
+                  ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30)]
+SHOW = [("Show the card", SHOW_TASK_, 90)]
+ACTS = {"full": SHUFFLE_ROUNDS + SHOW, "shuffle": SHUFFLE_ROUNDS, "show": SHOW}
+ACT = ACTS["full"]
 
 
-async def run_act(on_step=None) -> dict:
-    """Shuffle three rounds, then show one card, back to back on the station agent (each round a fresh episode)."""
+async def run_act(on_step=None, name: str = "full") -> dict:
+    """Run one of ACTS on the station agent from the start position: "full" (shuffle three rounds, then show one
+    card), "shuffle" or "show". Each step is a fresh episode; the arms stay connected throughout."""
+    steps = ACTS.get(name, ACTS["full"])
     global STOP_REQUESTED
     on_step = on_step or _noop
     STOP_REQUESTED = False
@@ -206,11 +211,11 @@ async def run_act(on_step=None) -> dict:
         if (await agent_status() or {}).get("state") in ("running", "starting"):
             await _agent("POST", "/stop", timeout=70)
         await _agent("POST", "/home", timeout=70)  # every act starts from the same pose
-        for i, (label, task, secs) in enumerate(ACT):
+        for i, (label, task, secs) in enumerate(steps):
             if STOP_REQUESTED:
                 await on_step("stop", "Stopped: arms hold, still connected")
                 return {"ok": False}
-            if task == SHOW_TASK_:
+            if task == SHOW_TASK_ and i > 0:
                 # The show was recorded from home with the cards on the table. Stop the shuffle, then home: the home
                 # move opens the grippers, so a card still held drops onto the table on the way. Then show, fresh.
                 await on_step("policy", "Back to the start position before showing a card")
@@ -218,7 +223,7 @@ async def run_act(on_step=None) -> dict:
                 await _agent("POST", "/home", timeout=70)
             await on_step("policy", f"{label}: {secs} s")
             status = await agent_status() or {}
-            code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(ACT) - 1)
+            code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(steps) - 1)
             if STOP_REQUESTED:
                 await on_step("stop", "Stopped: arms hold, still connected")
                 return {"ok": False}
@@ -228,7 +233,8 @@ async def run_act(on_step=None) -> dict:
         await on_step("stop", "Done: arms hold, still connected")
     finally:
         await relay("resume")
-    await on_step("done", "Shuffle & show finished")
+    await on_step("done", {"full": "Shuffle & show finished", "shuffle": "Shuffle finished",
+                           "show": "Show the card finished"}.get(name, "Finished"))
     return {"ok": True}
 
 
