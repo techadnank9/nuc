@@ -87,7 +87,7 @@ COMMAND_LOCK = asyncio.Lock()
 
 def mode_info() -> dict:
     mode, live = harness.current_mode()
-    return {"mode": mode, "live": live, "robot": mode == "robot"}
+    return {"mode": mode, "live": live, "robot": mode == "robot", "model": harness.CHECKPOINT}
 
 
 async def robot_command(request: web.Request) -> web.Response:

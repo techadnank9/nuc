@@ -25,7 +25,10 @@ from pathlib import Path
 from cards import CARDS
 
 HOST = os.environ.get("ROBOT_HOST", "pah@10.103.0.133")
-TASK = os.environ.get("DRAW_TASK", "pick up the black card")
+# The two moves the Nov 7 fine-tune learned (exact training sentences; the model matches this text).
+SHOW_TASK = "pick up the card from the handle and show it, then put it back down"
+SHUFFLE_TASK = "can you shuffle these cards using both arms"
+TASK = os.environ.get("DRAW_TASK", SHOW_TASK)
 CHECKPOINT = os.environ.get("DRAW_CHECKPOINT", "")  # e.g. dream-1-ft:<account>-fortune; empty = base Dream-1
 # NUCK-8's arms are YAMs (the 11:43 live run tracked its commands under body: yam). A YAM fine-tune drives
 # the joints it learned, so it runs with --action-space joint (docs/running_your_model.md).

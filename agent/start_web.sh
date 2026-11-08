@@ -3,6 +3,7 @@
 #
 #   ./start_web.sh                       # robot connected: the arms move on every draw and command (hand on the e-stop)
 #   DRAW_MODE=manual ROBOT_CAMERAS=0 ./start_web.sh   # no robot at all: random cards (test the conversation anywhere)
+#   DRAW_CHECKPOINT=dream-1-ft:<id> ./start_web.sh    # run our fine-tune (the id finetune_steps.py prints) instead of base Dream-1
 #
 # Then open http://127.0.0.1:8765 in Chrome or Safari (not an embedded browser: it needs the mic).
 # The page also shows the robot's three cameras: the server starts a camera relay on the station while it runs
