@@ -343,7 +343,15 @@ async def reset_home(on_step=None) -> dict:
         reply = await _agent("POST", "/reset", timeout=70)
     else:
         await on_step("policy", "Moving both arms to the start position")
-        reply = await _agent("POST", "/home", timeout=70)
+        for _ in range(3):  # a run still winding down refuses the home move: stop again, wait, retry
+            reply = await _agent("POST", "/home", timeout=70)
+            if not str((reply or {}).get("error", "")).count("running"):
+                break
+            await _agent("POST", "/stop", timeout=70)
+            for _ in range(15):
+                if ((await agent_status()) or {}).get("state") == "idle":
+                    break
+                await asyncio.sleep(1)
     for _ in range(40):
         status = await agent_status() or {}
         if status.get("state") in ("idle", "error"):
