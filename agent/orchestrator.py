@@ -13,7 +13,7 @@ its view page (port 8093), both tunnelled over SSH. The person at the emergency 
     ssh pah@10.103.0.133
     source ~/dream-env/bin/activate && dreamcli robot up --view      # 'dreamcli robot down' when done
 
-From agent/ (ANTHROPIC_API_KEY set, or `ant auth login`):
+From agent/ (ANTHROPIC_API_KEY in agent/.env, or exported):
     uv run python orchestrator.py --goal "move the wooden block at the end of the row to the other end"   # plan only
     uv run python orchestrator.py --goal "..." --live        # the arms move: hand on the emergency stop
 
@@ -34,6 +34,9 @@ import urllib.request
 from pathlib import Path
 
 import anthropic
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")  # ANTHROPIC_API_KEY lives in agent/.env (gitignored)
 
 HOST = os.environ.get("ROBOT_HOST", "pah@10.103.0.133")
 API_PORT, VIEW_PORT = 8092, 8094  # local ends of the tunnels to the station's 8091 (agent API) and 8093 (view page)
