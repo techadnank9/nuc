@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fortune Teller Model Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+DW+Pica&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Booth palette of the Fortune Teller page; one dark theme by choice. */
+  --booth: #1b1230;
+  --velvet: #2b1d47;
+  --velvet-2: #362659;
+  --brass: #c9a227;
+  --parchment: #efe4c8;
+  --muted: #b8aac9;
+  --jade: #4fb3a2;
+  --ember: #e0745a;
+  --display: "IM Fell DW Pica", Georgia, serif;
+  --body: "Instrument Sans", system-ui, sans-serif;
+  /* Layout: the reading's chain of roles across the top, the chosen role's detail below. */
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--booth); color: var(--parchment); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+main { max-width: 1180px; margin: 0 auto; padding: 28px 20px 56px; display: grid; gap: 24px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; }
+h1 { font-size: 2.3rem; color: var(--brass); line-height: 1.1; }
+h2 { font-size: 1.5rem; color: var(--brass); }
+h3 { font-size: 1.2rem; }
+p { margin: 0; max-width: 72ch; }
+.muted { color: var(--muted); }
+code { background: var(--velvet-2); padding: 1px 6px; border-radius: 4px; font-size: .9em; }
+
+.mode { justify-self: start; display: inline-flex; background: var(--velvet); border-radius: 999px; padding: 4px; gap: 4px; }
+.mode button { font: inherit; border: 0; border-radius: 999px; padding: 8px 18px; min-height: 40px; cursor: pointer; background: transparent; color: var(--muted); }
+.mode button[aria-pressed="true"] { background: var(--brass); color: #1b1230; font-weight: 600; }
+button:focus-visible { outline: 2px solid var(--jade); outline-offset: 2px; }
+
+.chain { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-items: stretch; }
+.role { position: relative; text-align: left; font: inherit; color: inherit; cursor: pointer; background: var(--velvet); border: 2px solid transparent; border-radius: 12px; padding: 14px; display: grid; gap: 6px; align-content: start; }
+.role:hover { border-color: #4a3a6e; }
+.role[aria-selected="true"] { border-color: var(--brass); }
+.role .what { font-size: .8rem; color: var(--brass); }
+.role .name { font-family: var(--display); font-size: 1.15rem; }
+.role .model { font-weight: 600; }
+.role .speed { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; font-size: .75rem; padding: 2px 9px; border-radius: 999px; width: fit-content; }
+.pill.live { background: #1f4a44; }
+.pill.key { background: #5a3b12; color: #ffd98a; }
+.pill.later { background: var(--velvet-2); }
+.arrow { position: absolute; right: -9px; top: 50%; width: 8px; height: 2px; background: var(--brass); }
+
+.detail { background: var(--velvet); border-radius: 12px; padding: 20px; display: grid; gap: 14px; }
+.cols { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; }
+table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--velvet-2); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: .8rem; }
+tr.pick td { background: #3b2a12; }
+tr.pick td:first-child { border-left: 3px solid var(--brass); }
+td.n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+ul { margin: 0; padding-left: 1.15em; display: grid; gap: 6px; }
+
+.timeline { display: grid; grid-template-columns: repeat(6, 1fr); border-radius: 12px; overflow: hidden; }
+.tl { background: var(--velvet); padding: 12px; border-right: 1px solid var(--booth); display: grid; gap: 4px; align-content: start; font-size: .88rem; }
+.tl:last-child { border-right: 0; }
+.tl b { font-family: var(--display); font-weight: 400; font-size: 1.05rem; }
+.tl .who { color: var(--brass); font-size: .8rem; }
+
+.note { border-left: 4px solid var(--ember); background: #3a1f3a; padding: 12px 16px; border-radius: 6px; }
+.note b { color: var(--ember); }
+
+@media (max-width: 900px) {
+  .chain { grid-template-columns: 1fr 1fr; }
+  .arrow { display: none; }
+  .cols { grid-template-columns: 1fr; }
+  .timeline { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header style="display:grid;gap:12px">
+    <h1>Which model does what in the Fortune Teller</h1>
+    <p class="muted">Five jobs in one reading. Pick a mode, then click a job to see the choice, the alternatives and the evidence. Times marked "measured" come from NUCK-8 tonight; the rest are published figures.</p>
+    <div class="mode" role="group" aria-label="Optimise for">
+      <button type="button" data-mode="best" aria-pressed="true">Best work</button>
+      <button type="button" data-mode="fast" aria-pressed="false">Fastest</button>
+    </div>
+  </header>
+
+  <section class="chain" id="chain" role="tablist" aria-label="Jobs"></section>
+
+  <section class="detail" id="detail" role="tabpanel" aria-live="polite"></section>
+
+  <section style="display:grid;gap:12px">
+    <h2>One reading, and who acts when</h2>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <div class="note"><b>To switch on everything marked "needs OpenAI key":</b> save the key on the station with the hidden prompt, then start the orchestrator; its first line must read <code>director: gpt-6-astra</code>. The emergency stop stays the real safety in every mode.</div>
+</main>
+
+<script>
+const ROLES = [
+  {
+    id: "voice", what: "Talks to the guest", name: "Fortune Teller voice",
+    best: { model: "gpt-realtime-2.1", effort: "", speed: "realtime speech", status: "live" },
+    fast: { model: "gpt-realtime-2.1", effort: "", speed: "realtime speech", status: "live" },
+    why: "Runs the conversation and calls the draw. It already answers in real time through LiveKit Inference, so speed and quality are both covered; nothing to change.",
+    options: [
+      ["gpt-realtime-2.1 (LiveKit Inference)", "realtime", "in use, works", "both"],
+    ],
+    evidence: ["Running on the page now: hands-free, interruptible voice.", "No change recommended before the demo."],
+  },
+  {
+    id: "director", what: "Decides the next instruction", name: "Director",
+    best: { model: "GPT-6 Astra", effort: "effort medium", speed: "seconds per decision (not yet measured here)", status: "key" },
+    fast: { model: "GPT-6 Astra", effort: "effort low", speed: "fastest Astra setting", status: "key" },
+    why: "Every ~30 s it looks at the cameras and the history and writes the next short sentence for Dream-1, rewording after a miss. This is judgment work, so the strongest robot-scene model wins.",
+    options: [
+      ["GPT-6 Astra", "~17 s per call in NVIDIA's study at medium; low is faster", "best robot-scene judgment tested", "both"],
+      ["Claude Fable 5.1 (fallback)", "1.5-4.7 s per call, measured tonight", "worked tonight; used when no OpenAI key", ""],
+      ["GPT-6.1 Terra", "3x faster than Astra (OpenAI)", "not tested on robots", ""],
+    ],
+    evidence: [
+      "NVIDIA Astranomy (CoRL 2026): Astra supervising a robot model lifted success from 36.8% to 66.5%.",
+      "Same study, direct control: Astra 72.7%, GPT-6 Sol 33.3%, Claude Opus 5.5 25.3%, GPT-6 Luna 2%.",
+      "Higher effort barely changed success (74.5% vs 72.7%) at 2.6x the latency, so low is the fast choice.",
+      "All in simulation, 5 episodes per task.",
+    ],
+  },
+  {
+    id: "arms", what: "Moves the arms", name: "Arm policy",
+    best: { model: "Dream-1 fine-tune", effort: "trained on 41 takes", speed: "~0.7 s per move chunk", status: "later" },
+    fast: { model: "Dream-1 fine-tune", effort: "trained on 41 takes", speed: "~0.7 s per move chunk", status: "later" },
+    why: "Only a robot model is fast enough to drive the arms. The fine-tune learned your shuffle (32 takes) and your show-the-card move (9 takes); until it finishes, base Dream-1 runs.",
+    options: [
+      ["Dream-1 fine-tune (job ftj_9e54d7ce0177c1e3)", "~0.7 s round trip", "ready in about 4 h", "both"],
+      ["Dream-1 base", "~0.7 s round trip, measured", "running now; grips are shaky", ""],
+      ["GPT-6 Astra as the controller", "~17 s per decision", "too slow for real arms (the study paused the simulation)", ""],
+    ],
+    evidence: [
+      "Tonight's base-model runs reached the cards but grips lasted under a second or closed on bare table.",
+      "Run the fine-tune with --action-space joint and its exact sentences: \"can you shuffle these cards using both arms\" and \"pick up the card from the handle and show it, then put it back down\".",
+    ],
+  },
+  {
+    id: "tester", what: "Checks the cameras", name: "Tester",
+    best: { model: "Fable 5.1 + Astra together", effort: "both look, rules combine", speed: "~2-5 s, in parallel", status: "key" },
+    fast: { model: "Claude Fable 5.1", effort: "effort low", speed: "~2 s per check, measured", status: "live" },
+    why: "Every few seconds it says done, progress, failed or unsafe. Fast and accurate matter equally: a slow tester wastes the arm's time, a wrong one stops a good grasp or misses a bad one.",
+    options: [
+      ["Fable 5.1 + GPT-6 Astra in parallel", "~2-5 s (slower of the two)", "both done = done; either unsafe = stop; disagree = keep checking", "best"],
+      ["Claude Fable 5.1 alone", "~2 s per check, measured tonight", "verdicts matched what happened", "fast"],
+      ["GPT-6.1 Terra", "3x faster than Astra (OpenAI)", "near-Astra visual reasoning (OpenAI); untested on robots", ""],
+    ],
+    evidence: [
+      "Tonight Fable correctly reported no motion, a gripper closing on bare table, and the grey card going missing.",
+      "Two testers only help if they disagree sometimes; the combining rules keep a disagreement from stopping a good attempt.",
+    ],
+  },
+  {
+    id: "safety", what: "Stops the arms", name: "Safety",
+    best: { model: "Emergency stop + code checks", effort: "no model", speed: "instant", status: "live" },
+    fast: { model: "Emergency stop + code checks", effort: "no model", speed: "instant", status: "live" },
+    why: "No model is the safety. Plain code stops the arms and sends them home on an unsafe verdict, a dead arm, a station error, Ctrl+C or the time caps, and a person keeps a hand on the emergency stop.",
+    options: [
+      ["Person at the emergency stop", "instant", "required for every live run", "both"],
+      ["Orchestrator code checks", "every 2 s", "arms alive, station errors, caps", "both"],
+    ],
+    evidence: ["The tester's \"unsafe\" verdict is a helper, never the only stop."],
+  },
+];
+
+const STATUS = { live: ["live", "Live now"], key: ["key", "Needs OpenAI key"], later: ["later", "After the fine-tune"] };
+let mode = "best", selected = "director";
+
+function renderChain() {
+  const el = document.getElementById("chain");
+  el.innerHTML = "";
+  ROLES.forEach((r, i) => {
+    const c = r[mode];
+    const b = document.createElement("button");
+    b.className = "role"; b.type = "button"; b.role = "tab";
+    b.setAttribute("aria-selected", r.id === selected);
+    b.innerHTML = `<span class="what">${r.what}</span><span class="name">${r.name}</span>
+      <span class="model">${c.model}</span>${c.effort ? `<span class="speed">${c.effort}</span>` : ""}
+      <span class="speed">${c.speed}</span><span class="pill ${STATUS[c.status][0]}">${STATUS[c.status][1]}</span>
+      ${i < ROLES.length - 1 ? '<span class="arrow" aria-hidden="true"></span>' : ""}`;
+    b.onclick = () => { selected = r.id; render(); };
+    el.append(b);
+  });
+}
+
+function renderDetail() {
+  const r = ROLES.find((x) => x.id === selected), c = r[mode];
+  const rows = r.options.map(([m, s, n, pick]) => {
+    const chosen = pick === "both" || pick === mode;
+    return `<tr class="${chosen ? "pick" : ""}"><td>${m}</td><td class="n">${s}</td><td>${n}</td></tr>`;
+  }).join("");
+  document.getElementById("detail").innerHTML = `
+    <div style="display:grid;gap:6px">
+      <h2>${r.name}: ${c.model}${c.effort ? `, ${c.effort}` : ""}</h2>
+      <p>${r.why}</p>
+    </div>
+    <div class="cols">
+      <div><h3 style="margin-bottom:8px">Options</h3>
+        <table><thead><tr><th>Model</th><th>Speed</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div><h3 style="margin-bottom:8px">Evidence</h3><ul>${r.evidence.map((e) => `<li>${e}</li>`).join("")}</ul></div>
+    </div>`;
+}
+
+function renderTimeline() {
+  const pick = (id) => ROLES.find((r) => r.id === id)[mode].model;
+  const steps = [
+    ["0:00", "Greeting", `Voice: ${pick("voice")}`],
+    ["0:15", "The question", `Voice: ${pick("voice")}`],
+    ["0:30", "Shuffle x3-5", `Director: ${pick("director")} · Arms: ${pick("arms")}`],
+    ["1:30", "Check each round", `Tester: ${pick("tester")}`],
+    ["1:45", "Show one card", `Director → Arms; Tester confirms`],
+    ["2:15", "The fortune", `Voice: ${pick("voice")} · arms home`],
+  ];
+  document.getElementById("timeline").innerHTML = steps.map(([t, n, w]) =>
+    `<div class="tl"><span class="muted" style="font-variant-numeric:tabular-nums">${t}</span><b>${n}</b><span class="who">${w}</span></div>`).join("");
+}
+
+function render() { renderChain(); renderDetail(); renderTimeline(); }
+document.querySelectorAll(".mode button").forEach((b) => b.onclick = () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll(".mode button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  render();
+});
+render();
+</script>
+</body>
+</html>
