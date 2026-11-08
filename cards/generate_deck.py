@@ -78,6 +78,9 @@ CRYSTAL_BALL = os.environ.get("CRYSTAL_BALL", "1") == "1" and TOP_STYLE == "low_
 GRIP_RIBS = os.environ.get("GRIP_RIBS", "0") == "1"
 BALL_DEPTH = 0.6
 
+# The arm flips the card end over end to show it, so the handle ends up at the bottom. The face art is
+# turned 180 degrees so it reads upright for the guest after that flip (it looks upside down handle-up).
+FACE_ROTATED = True
 FACE_DEPTH = 0.6   # engraving into the face (3 layers at 0.2 mm): swap filament at 0.6 mm to colour it
 BACK_RAISE = 0.6   # raised relief on the back (3 layers)
 LINE = 1.4         # minimum stroke for a 0.4 mm nozzle
@@ -329,9 +332,15 @@ def build_back():
     return solid
 
 
+def face_layout(card_id):
+    """The face art as it sits on the card with the handle up: turned 180 degrees when FACE_ROTATED."""
+    art = face_art(card_id)
+    return affinity.rotate(art, 180, origin=(0, 0)) if FACE_ROTATED else art
+
+
 def build_card(card_id, back=None):
     back = back if back is not None else build_back()
-    engraving = affinity.scale(face_art(card_id), -1, 1, origin=(0, 0))  # seen from -Z: mirror X
+    engraving = affinity.scale(face_layout(card_id), -1, 1, origin=(0, 0))  # seen from -Z: mirror X
     return back - extrude_2d(engraving, -0.1, FACE_DEPTH + 0.1)
 
 
@@ -413,7 +422,7 @@ def preview(ids):
         ax.axis("off")
     for k, cid in enumerate(ids):
         card_c, skin_c = (FILAMENT[c] for c in COLORS.get(cid, ("black", "orange")))
-        card_ax(axes.flat[k], face_art(cid), skin_c, card_c, f"{DECK[cid][0].title()} ({COLORS.get(cid, ('-',))[0]})")
+        card_ax(axes.flat[k], face_layout(cid), skin_c, card_c, f"{DECK[cid][0].title()} ({COLORS.get(cid, ('-',))[0]})")
     start = -(-len(ids) // cols) * cols
     for k, colour in enumerate(backs):
         card_ax(axes.flat[start + k], back_art(), FILAMENT[colour], None, f"back, {colour}")

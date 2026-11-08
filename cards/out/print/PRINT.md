@@ -3,6 +3,9 @@
 Units: millimetres. Every file is already in print orientation: **face down on the bed, handle pointing up**.
 No supports. Each card is 63 x 113 x 14 mm, about 8 g.
 
+The face art is turned 180 degrees on purpose: it reads upright when the arm flips the card to show it
+(handle at the bottom), and upside down with the handle up.
+
 ## Settings (all plates)
 
 - PLA (matte if possible), 0.4 mm nozzle, **0.2 mm layers**, 15 to 20% infill, 3 walls, no supports.

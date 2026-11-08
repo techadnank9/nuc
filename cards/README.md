@@ -24,7 +24,10 @@ deck (`agent/cards.py`) lists the same eight.
 - **Back: the same design on every card**, in the card's colour: "ROBOT / FORTUNE TELLER", a sun-and-moon emblem,
   three stars and a border, raised 0.6 mm. The grip handle stands out of this side. The colours mean the backs
   are not identical from above, but they let a camera tell which card was drawn.
-- **Face: one per card.** Numeral, one simple symbol and the name, engraved 0.6 mm.
+- **Face: one per card.** Numeral, one simple symbol and the name, engraved 0.6 mm. **Turned 180°**: the arm
+  flips the card end over end to show it (handle ends up at the bottom), so the face reads upright for the guest
+  only after that flip and looks upside down with the handle up. `FACE_ROTATED = False` in `generate_deck.py`
+  undoes it (e.g. if the card goes in the reveal stand handle-up). See `out/flip_before_after.png`.
 - **Handle: v2's block shape, smooth, with a low dome and a crystal ball.** The 30 × 18 × 14 mm block keeps its
   two flat grip faces 14 mm apart (the shape base Dream-1 picked up on Nov 7), but **without v2's friction ribs**.
   A 7 mm low dome replaces the flat top, and a 17 mm crystal ball outline is engraved 0.6 mm on both faces,
@@ -49,6 +52,7 @@ cd cards
 python3 -m venv .venv && .venv/bin/pip install trimesh manifold3d numpy shapely matplotlib
 .venv/bin/python generate_deck.py                 # all eight; or --only 16,101
 .venv/bin/python check_deck.py                    # needs out/card_v2.stl as the handle reference
+.venv/bin/python make_print.py                    # out/print: single cards, 4 colour plates, fortune_deck_print.zip
 ```
 
 Add a card: add it to `DECK` and `COLORS`, draw its symbol in `symbol()` in `generate_deck.py` (keep strokes at least
