@@ -144,6 +144,8 @@
   .livebtn:disabled { opacity:.4; cursor:default; }
   .cmd .mode { font-size:12.5px; color:var(--dim); margin-top:8px; }
   .homebtn { border-radius:var(--r-ctl); min-height:44px; padding:0 14px; font-weight:600; cursor:pointer; background:transparent; color:var(--parchment); border:2px solid var(--jade); }
+  .rounds { display:flex; align-items:center; gap:8px; margin:-4px 0 10px; font-size:.9rem; color:var(--muted); }
+  .rounds select { min-height:36px; border-radius:8px; background:var(--velvet-2); color:var(--parchment); border:1px solid #4a3a6e; padding:0 8px; font:inherit; }
   .actrow { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:-4px 0 12px; }
   .actrow .actbtn { margin:0; }
   .actbtn { width:100%; min-height:52px; margin:4px 0 12px; font-size:1.05rem; }
@@ -241,6 +243,9 @@
     <div class="block cmd">
       <h2>Command the arms</h2>
       <button class="go actbtn" id="actBtn" type="button" data-act="full">Shuffle &amp; show a card</button>
+      <label class="rounds" for="rounds">Shuffles
+        <select id="rounds"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+      </label>
       <div class="actrow">
         <button class="go actbtn" type="button" data-act="shuffle">Shuffle</button>
         <button class="go actbtn" type="button" data-act="show">Show the card</button>
@@ -533,7 +538,7 @@ document.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
   lastTrip = -1;
   $("cmdErr").textContent = "";
   const r = await fetch("/robot/act", { method: "POST", headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ act: b.dataset.act }) });
+                                        body: JSON.stringify({ act: b.dataset.act, rounds: Number($("rounds").value) }) });
   if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
 });
 

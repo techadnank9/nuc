@@ -190,10 +190,12 @@ ACTS = {"full": SHUFFLE_ROUNDS + SHOW, "shuffle": SHUFFLE_ROUNDS, "show": SHOW}
 ACT = ACTS["full"]
 
 
-async def run_act(on_step=None, name: str = "full") -> dict:
+async def run_act(on_step=None, name: str = "full", rounds: int = 1) -> dict:
     """Run one of ACTS on the station agent from the start position: "full" (shuffle three rounds, then show one
     card), "shuffle" or "show". Each step is a fresh episode; the arms stay connected throughout."""
-    steps = ACTS.get(name, ACTS["full"])
+    rounds = max(1, min(int(rounds), 5))
+    shuffle = [(f"Shuffle, round {k} of {rounds}", SHUFFLE_TASK_, 30) for k in range(1, rounds + 1)]
+    steps = {"full": shuffle + SHOW, "shuffle": shuffle, "show": SHOW}.get(name, shuffle + SHOW)
     global STOP_REQUESTED
     on_step = on_step or _noop
     STOP_REQUESTED = False
