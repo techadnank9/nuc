@@ -327,7 +327,7 @@ def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float, chec
     check_station(s)
     history: list[dict] = []
     started = time.monotonic()
-    running = s.get("state") == "running"
+    running = s.get("state") in ("running", "starting")
     for n in range(1, max_attempts + 1):
         d = direct(goal, history, latest_frames())
         log("director", attempt=n, **d)
@@ -350,12 +350,12 @@ def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float, chec
                     result = refusal
                     break
                 check_station(s)
-                if s.get("state") != "running":
+                if s.get("state") not in ("running", "starting"):  # starting = home move + model warm-up after /start
                     result = f"the episode ended early (station {s.get('state')})"
             if time.monotonic() - started > max_total_s:
                 raise Stop(f"total time cap of {max_total_s:.0f} s reached")
             if result:
-                running = s.get("state") == "running"
+                running = s.get("state") in ("running", "starting")
                 break
             frames = latest_frames()
             if not frames:
