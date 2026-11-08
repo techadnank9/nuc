@@ -85,6 +85,12 @@ EVENTS: list[dict] = []
 COMMAND_LOCK = asyncio.Lock()
 
 
+async def push_event(step: str, text: str) -> None:
+    """Adds one line to the page's robot log (the page polls /robot/events)."""
+    EVENTS.append({"id": EVENTS[-1]["id"] + 1 if EVENTS else 0, "step": step, "text": text})
+    del EVENTS[:-200]  # keep the latest 200; ids keep counting, so the page's ?since= stays correct
+
+
 def mode_info() -> dict:
     mode, live = harness.current_mode()
     return {"mode": mode, "live": live, "robot": mode == "robot", "model": harness.CHECKPOINT}
