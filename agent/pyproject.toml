@@ -3,6 +3,7 @@ name = "fortune-teller-agent"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
+    "anthropic>=2.6.0",
     "livekit-agents[images]~=1.8",
     "python-dotenv",
 ]
