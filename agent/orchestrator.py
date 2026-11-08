@@ -9,11 +9,12 @@ Why Astra directs: in NVIDIA's Astranomy study (CoRL 2026) GPT-6 Astra supervisi
 36.8% to 66.5%, and it led every model tested on robot-scene judgment; `low` effort because higher effort barely
 changed success there while costing 2.6x the latency. Every call's time is logged ("s") to compare.
 
-Each attempt runs one prompt for --attempt-seconds (30 by default), then the tester looks once and the director sends
-the same prompt again (progress), a reworded one (failed, or Dream refused it) or finishes (done). The loop and every
-safety stop are plain code, checked every 2 s during an attempt: the arms stop and go home on an unsafe verdict, a
-dead arm, a station error, Ctrl+C, or the attempt/time caps. The e-stop is still the real safety: the tester only
-looks once per attempt.
+Each attempt sends one prompt and leaves that Dream-1 episode running while the tester checks every few seconds
+(--check-every, plus the ~5 s the check itself takes). progress / unclear keep it running untouched (resending would
+restart the episode and lose a grasp in progress) for up to --attempt-seconds (45); failed goes straight back to the
+director for a reworded prompt; done moves to the next step or finishes. The loop and every safety stop are plain code
+(arms alive and station errors every 2 s): the arms stop and go home on an unsafe verdict, a dead arm, a station
+error, Ctrl+C, or the attempt/time caps. The e-stop is still the real safety.
 
 It drives the station agent through the API show_sequence.py uses (port 8091) and reads the frames Dream-1 saw from
 its view page (port 8093), both tunnelled over SSH. The person at the emergency stop starts the agent first:
@@ -85,19 +86,31 @@ The cards are 3D-printed with a handle sticking up: a flat card cannot be grippe
 a card says to pick it up by the handle: "pick up the grey card by the handle and put it on the other side of the \
 orange card". Never send the goal's wording unchanged when it leaves the handle out.
 
-Each attempt runs your prompt for a fixed time, then a tester looks at the cameras and reports done, progress, \
-failed or unclear. After progress or unclear, send the same prompt again (the arm continues from where it is). After \
-failed, change one thing: a clearer object name, a grasp point, a nearer or more visible result, or a smaller step. \
-Keep calling each object by the same name in every prompt unless the tester showed that name picks the wrong object.
+Each prompt runs while a tester checks the cameras every few seconds; you are asked again when it reports done, \
+failed, or the prompt ran out of time while still making progress. After failed or out of time, change one thing: a \
+clearer object name, a grasp point, a nearer or more visible result, or a smaller step (just "pick up the grey card \
+by the handle" first). After done, send the next step or finish. Keep calling each object by the same name in every \
+prompt unless the tester showed that name picks the wrong object.
 
 Reply with JSON only. action "prompt" sends `prompt` for the next attempt. action "finish" when the goal is met. \
 action "give_up" when the history shows it is not working (the same failure after three different wordings) or the \
 scene makes it impossible."""
 
+# Appended to DIRECTOR_SYSTEM with --finetuned: the Nov 7 fine-tune learned these two sentences exactly (32 + 9 takes).
+FINETUNED_NOTE = """
+
+The arms now run a model fine-tuned on this table. It learned exactly two instructions, and works best with them \
+word for word; prefer them over anything else:
+- "can you shuffle these cards using both arms" (both arms pick up the cards by their handles and set them down in \
+new places; one send is one shuffle round, so send it again for each round)
+- "pick up the card from the handle and show it, then put it back down" (one arm lifts a card, shows its face to the \
+person in front of the table, and puts it back)
+Use your own wording only when the history shows one of these failing twice in a row."""
+
 TESTER_SYSTEM = """You check a robot while it works. You get the latest camera frames from the robot (overhead and \
 the two wrist cameras), the instruction it is executing, and the station's status. Judge only from what you see.
 
-This check comes at the end of an attempt. verdict:
+You are called every few seconds while the instruction runs. verdict:
 - done: the instruction is visibly complete.
 - progress: not finished, but closer than before (approaching, grasping or carrying the right object).
 - failed: it is doing something else, is stuck where the previous check saw it, grabbed the wrong object, or \
@@ -273,7 +286,7 @@ def refused(s: dict) -> str:
 
 # --- the loop -------------------------------------------------------------------------------------------------------
 
-def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float) -> None:
+def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float, check_every: float) -> None:
     s = status()
     if s.get("state") not in ("idle", "running"):
         raise Stop(f"the station agent is {s.get('state')}, not idle")
@@ -281,10 +294,7 @@ def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float) -> N
     history: list[dict] = []
     started = time.monotonic()
     running = s.get("state") == "running"
-    previous = ""
     for n in range(1, max_attempts + 1):
-        if time.monotonic() - started > max_total_s:
-            raise Stop(f"total time cap of {max_total_s:.0f} s reached")
         d = direct(goal, history, latest_frames())
         log("director", attempt=n, **d)
         if d["action"] != "prompt":
@@ -294,28 +304,43 @@ def run(goal: str, max_attempts: int, max_total_s: float, attempt_s: float) -> N
         else:
             http("POST", f"{API}/start", {"prompt": d["prompt"]})
             running = True
-        # Run the attempt; the code-side checks (arms alive, station error) still run every POLL_S.
-        end, why_ended = time.monotonic() + attempt_s, ""
-        while time.monotonic() < end:
-            time.sleep(POLL_S)
-            s = status()
-            if why_ended := refused(s):
+        sent, previous, result = time.monotonic(), "", ""
+        notes: list[str] = []
+        while not result:
+            # Wait check_every, running the code-side checks (arms alive, station error, refusal) every POLL_S.
+            wake = time.monotonic() + check_every
+            while time.monotonic() < wake and not result:
+                time.sleep(min(POLL_S, max(0.0, wake - time.monotonic())) or POLL_S)
+                s = status()
+                if refusal := refused(s):
+                    result = refusal
+                    break
+                check_station(s)
+                if s.get("state") != "running":
+                    result = f"the episode ended early (station {s.get('state')})"
+            if time.monotonic() - started > max_total_s:
+                raise Stop(f"total time cap of {max_total_s:.0f} s reached")
+            if result:
+                running = s.get("state") == "running"
                 break
-            check_station(s)
-            if s.get("state") != "running":
-                why_ended = f"the episode ended early (station {s.get('state')})"
-                break
-        if why_ended:
-            log("attempt_ended", attempt=n, reason=why_ended)
-            history.append({"attempt": n, "prompt": d["prompt"], "result": why_ended})
-            running = s.get("state") == "running"
-            continue
-        t = test(d["prompt"], s, latest_frames(), previous)
-        log("tester", attempt=n, **t)
-        previous = f"{t['verdict']}: {t['seen']}"
-        history.append({"attempt": n, "prompt": d["prompt"], "result": previous, "suggestion": t["suggestion"]})
-        if t["verdict"] == "unsafe":
-            raise Stop(f"tester: unsafe: {t['seen']}")
+            frames = latest_frames()
+            if not frames:
+                continue  # the episode is still ramping up
+            t = test(d["prompt"], s, frames, previous)
+            log("tester", attempt=n, after_s=round(time.monotonic() - sent), **t)
+            previous = f"{t['verdict']}: {t['seen']}"
+            notes.append(previous)
+            if t["verdict"] == "unsafe":
+                raise Stop(f"tester: unsafe: {t['seen']}")
+            if t["verdict"] == "done":
+                result = "done"
+            elif t["verdict"] == "failed":
+                result = f"failed: {t['seen']} (tester suggests: {t['suggestion']})"
+            elif time.monotonic() - sent >= attempt_s:
+                result = f"out of time after {attempt_s:.0f} s while still {t['verdict']}: {t['seen']}"
+            # progress / unclear: leave the episode running untouched
+        log("attempt_result", attempt=n, result=result)
+        history.append({"attempt": n, "prompt": d["prompt"], "result": result, "checks": notes[-3:]})
     raise Stop(f"attempt cap of {max_attempts} reached")
 
 
@@ -323,15 +348,20 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--goal", required=True, help="what the arms should achieve, in plain words")
     p.add_argument("--live", action="store_true", help="send prompts to the arms (without it: plan the first step only)")
-    p.add_argument("--attempt-seconds", type=float, default=30, help="how long each prompt runs before a check")
-    p.add_argument("--max-attempts", type=int, default=6)
-    p.add_argument("--max-seconds", type=float, default=240)
+    p.add_argument("--attempt-seconds", type=float, default=45, help="longest one prompt may run while making progress")
+    p.add_argument("--check-every", type=float, default=4, help="pause between tester checks (each takes ~5 s more)")
+    p.add_argument("--max-attempts", type=int, default=8)
+    p.add_argument("--max-seconds", type=float, default=300)
+    p.add_argument("--finetuned", action="store_true",
+                   help="the arms run our fine-tune: the director prefers its two trained instructions")
     p.add_argument("--director", choices=("astra", "fable"),
                    default="astra" if os.environ.get("OPENAI_API_KEY") else "fable",
                    help="which model picks the prompts (default: astra when OPENAI_API_KEY is set)")
     args = p.parse_args()
-    global DIRECTOR
+    global DIRECTOR, DIRECTOR_SYSTEM
     DIRECTOR = args.director
+    if args.finetuned:
+        DIRECTOR_SYSTEM += FINETUNED_NOTE
     print(f"director: {ASTRA if DIRECTOR == 'astra' else MODEL}; tester: {MODEL}")
 
     if not args.live:
@@ -350,7 +380,7 @@ def main() -> int:
     try:
         log("start", goal=args.goal, attempt_s=args.attempt_seconds, max_attempts=args.max_attempts,
             max_seconds=args.max_seconds)
-        run(args.goal, args.max_attempts, args.max_seconds, args.attempt_seconds)
+        run(args.goal, args.max_attempts, args.max_seconds, args.attempt_seconds, args.check_every)
         log("finished")
     except Stop as e:
         log("stop", reason=str(e))
