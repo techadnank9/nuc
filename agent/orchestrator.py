@@ -60,6 +60,7 @@ API_PORT, VIEW_PORT = (8091, 8093) if ON_STATION else (8092, 8094)
 API, VIEW = f"http://127.0.0.1:{API_PORT}", f"http://127.0.0.1:{VIEW_PORT}"
 MODEL = "claude-fable-5-1"
 CHECK_S = 4.0  # pause between tester checks (each check itself takes a few seconds)
+EXTEND_S = 30.0  # extra time a step may run past its planned seconds while the tester keeps saying on_track
 LOG = Path(__file__).resolve().parent / "orchestrator_log.jsonl"
 
 # Dream's filter refused "hold up ... to show it" twice on Nov 7; keep prompts to tabletop actions.
@@ -73,10 +74,13 @@ Dream-1 does best with one short, concrete sentence: one object named by colour 
 destination it can see ("pick up the red block and place it to the right of the green block"). It does badly with \
 vague, repeated or two-handed goals ("shuffle", "tidy up"). Break the goal into such single steps and send one at a \
 time. If a step failed, change the wording (a clearer object name, a nearer or more visible destination, a smaller \
-sub-step) rather than resending it. Never ask Dream-1 to hold something up, show or reveal it, or aim at a camera or \
+sub-step) rather than resending it. Every new prompt restarts Dream-1's episode from scratch, so keep calling each \
+object by the same name in every prompt (unless the tester showed that name picks the wrong object), and do not \
+reword a step that was making progress: if it ran out of time while on track, send the same prompt again. Never ask Dream-1 to hold something up, show or reveal it, or aim at a camera or \
 a person: Dream's API refuses those.
 
-Reply with JSON only. action "prompt" sends `prompt` for `seconds` (8-40; a single pick and place needs about 20). \
+Reply with JSON only. action "prompt" sends `prompt` for `seconds` (15-45; a single pick and place needs about 35; \
+a step that stays on track is given extra time automatically). \
 action "finish" when the goal is met. action "give_up" when the history shows it is not working (the same failure \
 after three different wordings) or the scene makes it impossible."""
 
@@ -207,7 +211,7 @@ def direct(goal: str, history: list[dict], frames: dict[str, str]) -> dict:
                    else "uses words Dream's filter refuses (show / hold up / reveal / camera / person)"
                    if BANNED.search(d["prompt"]) else "")
         if not problem:
-            d["seconds"] = max(8, min(40, int(d["seconds"])))
+            d["seconds"] = max(15, min(45, int(d["seconds"])))
             return d
         log("director_prompt_rejected", prompt=d["prompt"], problem=problem)
         text += f"\n\nYour prompt {d['prompt']!r} was rejected: it is {problem}. Give another."
@@ -240,9 +244,16 @@ def run(goal: str, max_prompts: int, max_total_s: float) -> None:
         else:
             http("POST", f"{API}/start", {"prompt": d["prompt"]})
             running = True
-        step_end, off, previous, outcome = time.monotonic() + d["seconds"], 0, "", "timed out"
+        step_start = time.monotonic()
+        step_end, off, previous, outcome = step_start + d["seconds"], 0, "", "timed out"
         notes: list[str] = []
-        while time.monotonic() < step_end:
+        while True:
+            if time.monotonic() >= step_end:
+                # Changing the prompt restarts Dream-1's episode: a step still on track keeps going, up to EXTEND_S more.
+                if notes and notes[-1].startswith("on_track") and time.monotonic() < step_start + d["seconds"] + EXTEND_S:
+                    step_end = time.monotonic() + CHECK_S
+                else:
+                    break
             if time.monotonic() - started > max_total_s:
                 raise Stop(f"total time cap of {max_total_s:.0f} s reached")
             time.sleep(CHECK_S)
