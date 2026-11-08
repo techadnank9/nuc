@@ -10,12 +10,31 @@
 set -euo pipefail
 export DRAW_MODE="${DRAW_MODE:-robot}"
 cd "$(dirname "$0")"
+PORT="${WEB_PORT:-8765}"
+
+# Only one Fortune Teller per laptop: stop an older copy (its page server and agent) before starting.
+old=$(pgrep -f "python3? .*(web_server\.py|agent\.py dev)" || true)
+if [ -n "$old" ] || lsof -tiTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Stopping the Fortune Teller that was already running…"
+  kill $old 2>/dev/null || true
+  lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
+  sleep 3
+fi
+
 trap 'kill 0' EXIT
 uv run agent.py dev &
+AGENT=$!
 sleep 4
 uv run python web_server.py &
-sleep 2
+WEB=$!
+sleep 3
+if ! kill -0 "$WEB" 2>/dev/null; then
+  echo "The page server did not start (see the error above). Stopping." >&2
+  exit 1
+fi
 echo
-echo "  Open http://127.0.0.1:8765   (DRAW_MODE=${DRAW_MODE:-manual})"
+echo "  Open http://127.0.0.1:$PORT   (DRAW_MODE=$DRAW_MODE)"
 echo
-wait
+# If either part stops, stop both, so a half-running Fortune Teller is never left behind.
+while kill -0 "$AGENT" 2>/dev/null && kill -0 "$WEB" 2>/dev/null; do sleep 2; done
+echo "The agent or the page server stopped: stopping the Fortune Teller." >&2
