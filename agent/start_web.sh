@@ -13,7 +13,12 @@ cd "$(dirname "$0")"
 PORT="${WEB_PORT:-8765}"
 
 # Only one Fortune Teller per laptop: stop an older copy (its page server and agent) before starting.
-old=$(pgrep -f "python3? .*(web_server\.py|agent\.py dev)" || true)
+here=$(pwd -P)
+old=""
+for pid in $(pgrep -f "python3? .*(web_server\.py|agent\.py dev)" || true); do
+  # only processes started from this folder, never another project's agent
+  [ "$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')" = "$here" ] && old="$old $pid"
+done
 if [ -n "$old" ] || lsof -tiTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "Stopping the Fortune Teller that was already running…"
   kill $old 2>/dev/null || true
