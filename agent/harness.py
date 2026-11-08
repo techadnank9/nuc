@@ -421,6 +421,64 @@ async def run_staged(kind: str, color: str = "orange", on_step=None) -> dict:
         await relay("resume")
 
 
+async def run_orchestrator(goal: str, on_step=None) -> dict:
+    """Ramsha's orchestrator on the station (Astra directs, Fable + Astra check the cameras) on base Dream-1, with its
+    decisions streamed into the page log. Stop arms sends Ctrl+C to it: it stops the arms and sends them home."""
+    global STOP_REQUESTED
+    on_step = on_step or _noop
+    STOP_REQUESTED = False
+    goal = " ".join(goal.split())[:400]
+    if not goal:
+        await on_step("failed", "Write a goal for the orchestrator first")
+        return {"ok": False}
+    if await agent_status() is None:
+        await on_step("failed", "Start the station agent first (dreamcli robot up joint --view)")
+        return {"ok": False}
+    code, out = await _sh(SSH + ["wc -l < ~/orchestrator_log.jsonl 2>/dev/null || echo 0"], 15)
+    start_line = int((out.strip().splitlines() or ["0"])[-1] or 0)
+    cmd = ("~/.local/bin/uv run --no-project --with 'anthropic>=2.6' --with openai --with python-dotenv "
+           f"python orchestrator.py --checkpoint {BASE_MODEL} --max-attempts 8 --max-seconds 300 "
+           f"--goal {shlex.quote(goal)} --live > /tmp/orch.log 2>&1; echo ORCH-EXITED >> /tmp/orch.log")
+    await _sh(SSH + [f"tmux kill-session -t orch 2>/dev/null; tmux new -d -s orch -c /home/pah {shlex.quote(cmd)}"], 20)
+    await on_step("policy", f"Orchestrator started (Astra directs, Fable + Astra check): {goal}")
+    await relay("release")
+    seen, stopped = start_line, False
+    try:
+        for _ in range(240):  # up to ~8 min; the orchestrator's own cap is 300 s
+            await asyncio.sleep(2)
+            if STOP_REQUESTED and not stopped:
+                stopped = True
+                await _sh(SSH + ["tmux send-keys -t orch C-c"], 10)
+                await on_step("stop", "Stop pressed: the orchestrator stops the arms and sends them home")
+            code, out = await _sh(SSH + [f"tail -n +{seen + 1} ~/orchestrator_log.jsonl; echo; "
+                                         "grep -c ORCH-EXITED /tmp/orch.log"], 15)
+            lines = out.strip().splitlines()
+            if not lines:
+                continue
+            done = lines[-1].strip() not in ("0", "")
+            for line in lines[:-1]:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                seen += 1
+                k = r.get("kind")
+                if k == "director":
+                    txt = f"Astra: {r.get('prompt')}" if r.get("action") == "prompt" else f"Astra: {r.get('action')} ({r.get('why', '')[:120]})"
+                    await on_step("policy", txt)
+                elif k == "tester":
+                    await on_step("check", f"Check: {r.get('verdict')} ({r.get('seen', '')[:140]})")
+                elif k in ("attempt_result", "stop", "finished", "arms_home", "stop_failed"):
+                    txt = r.get("result") or r.get("reason") or r.get("error") or k.replace("_", " ")
+                    await on_step("failed" if k == "stop_failed" else "stop", str(txt)[:180])
+            if done:
+                break
+    finally:
+        await relay("resume")
+    await on_step("done", "Orchestrator finished")
+    return {"ok": True}
+
+
 STOP_REQUESTED = False  # set by stop_robot(): ends a running Shuffle & show after the current step
 
 

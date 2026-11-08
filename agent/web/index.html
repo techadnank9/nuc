@@ -146,6 +146,7 @@
   .homebtn { border-radius:var(--r-ctl); min-height:44px; padding:0 14px; font-weight:600; cursor:pointer; background:transparent; color:var(--parchment); border:2px solid var(--jade); }
   .rounds { display:flex; align-items:center; gap:8px; margin:-4px 0 10px; font-size:.9rem; color:var(--muted); }
   .rounds select { min-height:36px; border-radius:8px; background:var(--velvet-2); color:var(--parchment); border:1px solid #4a3a6e; padding:0 8px; font:inherit; }
+  .orchgoal { width:100%; margin:6px 0 6px; font:inherit; font-size:.9rem; color:var(--parchment); background:var(--velvet-2); border:1px solid #4a3a6e; border-radius:8px; padding:8px; resize:vertical; }
   .actrow { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:-4px 0 12px; }
   .actrow .actbtn { margin:0; }
   .actbtn { width:100%; min-height:52px; margin:4px 0 12px; font-size:1.05rem; }
@@ -258,6 +259,9 @@
         <button class="go actbtn" type="button" data-staged="place">Grab &amp; place</button>
         <button class="go actbtn" type="button" data-staged="show">Grab &amp; show</button>
       </div>
+      <label class="sr" for="orchGoal">Goal for the orchestrator</label>
+      <textarea id="orchGoal" class="orchgoal" rows="2">pick up the orange card by the handle and hold it just above the table, then lift it up high so its back is completely visible, then put it back down</textarea>
+      <button class="go actbtn" id="orchBtn" type="button">Ask Astra to do it</button>
       <div class="chips" id="chips">
         <button data-task="can you shuffle these cards using both arms" data-secs="120">Shuffle the cards</button>
         <button data-task="pick up the card from the handle and show it, then put it back down" data-secs="120">Show a card</button>
@@ -518,7 +522,7 @@ async function pollEvents() {
       : "No robot connected (started with DRAW_MODE=manual): commands are refused.";
     $("cmdModel").textContent = d.model ? `Model: our fine-tune (${d.model})` : "Model: Dream-1 base (fine-tune not set)";
     $("cmdGo").disabled = d.busy; $("cmdGo").textContent = d.busy ? "Running…" : "Send to Dream-1";
-    document.querySelectorAll("[data-act], [data-staged]").forEach((b) => b.disabled = d.busy);
+    document.querySelectorAll("[data-act], [data-staged], #orchBtn").forEach((b) => b.disabled = d.busy);
     $("actBtn").textContent = d.busy ? "Arms working…" : "Shuffle & show a card";
     $("fOverhead").classList.toggle("drawing", d.busy);
   } catch {}
@@ -548,6 +552,12 @@ document.querySelectorAll("[data-staged]").forEach((b) => b.onclick = async () =
                                            body: JSON.stringify({ kind: b.dataset.staged, color: $("cardColor").value }) });
   if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
 });
+$("orchBtn").onclick = async () => {
+  $("cmdErr").textContent = "";
+  const r = await fetch("/robot/orchestrate", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ goal: $("orchGoal").value }) });
+  if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
+};
 $("homeBtn").onclick = async () => { await fetch("/robot/home", { method: "POST" }); };
 document.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
   lastTrip = -1;
