@@ -186,7 +186,7 @@
     <div class="speak">
       <div class="microw">
         <span class="side"></span>
-        <button id="micBtn" aria-label="Tap to start talking" aria-pressed="false">
+        <button id="micBtn" aria-label="Start the conversation" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
       </button>
         <div class="side">
@@ -194,7 +194,7 @@
           <button class="end small" id="endBtn" hidden>End</button>
         </div>
       </div>
-      <div class="hint" id="micHint"><b>Tap to start talking</b></div>
+      <div class="hint" id="micHint"><b>Tap to start</b>, then just talk</div>
     </div>
     <div class="convo">
       <h2>Transcript</h2>
@@ -377,12 +377,25 @@ async function setCamera(on) {
   $("camBtn").setAttribute("aria-label", on ? "Turn your camera off" : "Turn your camera on");
 }
 
+/* Latency: fetch a token and warm the LiveKit connection as soon as the page loads, so the first tap
+   only has to join. Tokens are cheap (no server calls) and are refreshed every 30 minutes. */
+let ready = null;
+async function prepare() {
+  try {
+    const r = await fetch("/token"); if (!r.ok) throw new Error(String(r.status));
+    ready = { ...(await r.json()), at: Date.now() };
+    new Room().prepareConnection(ready.url, ready.token).catch(() => {});
+  } catch { ready = null; }
+}
+prepare(); setInterval(() => { if (!room) prepare(); }, 30 * 60 * 1000);
+
 async function begin() {
   $("startBtn").hidden = true; voice("busy", "Connecting");
   $("lines").innerHTML = ""; bubbles.clear(); asked = false; resetCard(); progress("listen");
   try {
-    const res = await fetch("/token"); if (!res.ok) throw new Error(`the page server answered ${res.status}`);
-    const { url, token } = await res.json();
+    if (!ready || Date.now() - ready.at > 50 * 60 * 1000) await prepare();
+    if (!ready) throw new Error("the page server did not answer");
+    const { url, token } = ready; ready = null; prepare();   /* use the warm token; get the next one ready */
     room = new Room({ adaptiveStream: true, dynacast: true });
 
     room.registerTextStreamHandler("lk.transcription", async (reader, from) => {
@@ -415,9 +428,9 @@ async function begin() {
     await room.connect(url, token);
     await room.startAudio();
     try {
-      await room.localParticipant.setMicrophoneEnabled(true);   /* ask permission once, then wait for the guest to tap */
+      await room.localParticipant.setMicrophoneEnabled(true);   /* hands-free: the mic stays on */
       guestMicSid = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.trackSid || null;
-      await setMic(false); micOk = true;
+      micOk = true; await setMic(true);
     } catch (e) { micOk = false; line("sys", "Your microphone is blocked, so type your question below."); $("micHint").textContent = "Microphone blocked: type below"; }
     try {
       const cams = await Room.getLocalDevices("videoinput");
@@ -435,54 +448,36 @@ async function begin() {
 
 async function finish(fromEvent = false) {
   if (room && !fromEvent) await room.disconnect();
-  room = null; micOn = false; $("micBtn").classList.remove("live"); $("micHint").innerHTML = "<b>Tap to start talking</b>";
+  room = null; micOn = false; $("micBtn").classList.remove("live"); $("micHint").innerHTML = "<b>Tap to start</b>, then just talk";
   $("pip").classList.add("off"); $("fOverhead").classList.remove("drawing");
   ["camBtn","camSelect"].forEach(id => $(id).disabled = true);
   $("startBtn").hidden = false; $("endBtn").hidden = true; voice("", "Voice");
   line("sys", "The reading has ended.");
 }
 
-$("startBtn").onclick = async () => { await begin(); if (room && micOk) { held = false; await setMic(true); } };
+$("startBtn").onclick = async () => { await begin(); if (room && micOk) await setMic(true); };
 $("endBtn").onclick = () => finish();
-/* Voice button: tap = toggle, hold (or hold the space bar) = talk while pressed */
-let micOk = false, pressAt = 0, held = false;
+/* Voice button: one tap starts the conversation; after that you just talk (hands-free).
+   The button only mutes and unmutes the microphone. */
+let micOk = false;
 async function setMic(on) {
   micOn = on;
-  if (room) {
-    await room.localParticipant.setMicrophoneEnabled(on);
-    const agent = [...room.remoteParticipants.values()].find(p => p.isAgent || p.identity.startsWith("agent"));
-    if (agent) room.localParticipant.performRpc({ destinationIdentity: agent.identity, method: on ? "start_turn" : "end_turn", payload: "" }).catch(() => {});
-  }
+  if (room) await room.localParticipant.setMicrophoneEnabled(on);
   const b = $("micBtn");
   b.classList.toggle("live", on); b.setAttribute("aria-pressed", String(on));
-  b.setAttribute("aria-label", on ? "Stop talking" : "Tap to talk");
-  $("micHint").innerHTML = on ? "<b>Listening…</b> tap again when you're done" : "<b>Tap to talk</b>, or hold it (or the space bar) while you speak";
+  b.setAttribute("aria-label", on ? "Mute microphone" : "Unmute microphone");
+  $("micHint").innerHTML = on ? "<b>I'm listening</b>: just talk. Tap to mute." : "<b>Muted</b>: tap to talk again";
 }
-$("micBtn").addEventListener("pointerdown", async (e) => {
-  e.preventDefault();
-  if (!room) {                                   /* first tap: start the reading, then listen */
+$("micBtn").addEventListener("click", async () => {
+  if (!room) {                                   /* first tap: start the conversation, then listen */
     $("micHint").innerHTML = "<b>Connecting…</b>";
     await begin();
-    if (room && micOk) { held = false; await setMic(true); }
+    if (room && micOk) await setMic(true);
     return;
   }
-  if (!micOk) return; pressAt = performance.now(); held = !micOn;
-  if (!micOn) await setMic(true);
+  if (micOk) await setMic(!micOn);
 });
-$("micBtn").addEventListener("pointerup", async () => {
-  if (!room || !micOk || !pressAt) return;
-  const long = performance.now() - pressAt > 450;
-  if (long && held) await setMic(false);           /* held: release ends talking */
-  else if (!held) await setMic(false);             /* tap while live: stop */
-});
-document.addEventListener("keydown", async (e) => {
-  if (e.code !== "Space" || e.repeat || !room || !micOk || document.activeElement === $("text")) return;
-  e.preventDefault(); if (!micOn) { held = true; await setMic(true); }
-});
-document.addEventListener("keyup", async (e) => {
-  if (e.code !== "Space" || !room || document.activeElement === $("text")) return;
-  if (held && micOn) await setMic(false);
-});
+
 /* ---------- Direct commands to Dream-1 (operator box) ---------- */
 let evSince = -1;
 async function pollEvents() {

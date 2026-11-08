@@ -41,17 +41,17 @@ async def index(_: web.Request) -> web.FileResponse:
 
 
 async def token(_: web.Request) -> web.Response:
+    """A fresh room + join token. The agent dispatch rides inside the token, so LiveKit sends the agent the
+    moment the guest joins: no API calls here, the response is instant (saves ~0.7 s per reading)."""
     room = f"fortune-{secrets.token_hex(4)}"
     guest = f"guest-{secrets.token_hex(3)}"
-    async with api.LiveKitAPI(URL.replace("wss://", "https://"), KEY, SECRET) as lk:
-        await lk.room.create_room(api.CreateRoomRequest(name=room, empty_timeout=120))
-        await lk.agent_dispatch.create_dispatch(api.CreateAgentDispatchRequest(agent_name=AGENT_NAME, room=room))
     jwt = (
         api.AccessToken(KEY, SECRET)
         .with_identity(guest)
         .with_name("Guest")
         .with_ttl(datetime.timedelta(hours=1))
         .with_grants(api.VideoGrants(room_join=True, room=room, can_publish=True, can_subscribe=True))
+        .with_room_config(api.RoomConfiguration(agents=[api.RoomAgentDispatch(agent_name=AGENT_NAME)]))
         .to_jwt()
     )
     return web.json_response({"url": URL, "token": jwt, "room": room})

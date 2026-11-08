@@ -52,14 +52,14 @@ async def silence(source: rtc.AudioSource, seconds: float) -> None:
 async def main() -> None:
     url, key, secret = os.environ["LIVEKIT_URL"], os.environ["LIVEKIT_API_KEY"], os.environ["LIVEKIT_API_SECRET"]
     room_name = f"voicetest-{int(time.time())}"
-    async with api.LiveKitAPI(url.replace("wss://", "https://"), key, secret) as lk:
-        await lk.room.create_room(api.CreateRoomRequest(name=room_name))
-        await lk.agent_dispatch.create_dispatch(
-            api.CreateAgentDispatchRequest(agent_name="fortune-teller", room=room_name)
-        )
+    T0 = time.perf_counter()
+    marks: dict[str, float] = {}
+    marks["token"] = time.perf_counter() - T0
     token = (
         api.AccessToken(key, secret).with_identity("guest").with_name("Guest")
-        .with_grants(api.VideoGrants(room_join=True, room=room_name)).to_jwt()
+        .with_grants(api.VideoGrants(room_join=True, room=room_name))
+        .with_room_config(api.RoomConfiguration(agents=[api.RoomAgentDispatch(agent_name=os.environ.get("AGENT_NAME", "fortune-teller"))]))
+        .to_jwt()
     )
 
     room = rtc.Room()
@@ -80,10 +80,14 @@ async def main() -> None:
         if track.kind == rtc.TrackKind.KIND_AUDIO:
             async def record() -> None:
                 async for ev in rtc.AudioStream(track, sample_rate=RATE, num_channels=1):
-                    recorded.append(np.frombuffer(ev.frame.data, dtype=np.int16).copy())
+                    chunk = np.frombuffer(ev.frame.data, dtype=np.int16).copy()
+                    if "first voice" not in marks and np.abs(chunk).max() > 1500:
+                        marks["first voice"] = time.perf_counter() - T0
+                    recorded.append(chunk)
             asyncio.ensure_future(record())
 
     await room.connect(url, token)
+    marks["joined room"] = time.perf_counter() - T0
     source = rtc.AudioSource(RATE, 1)
     await room.local_participant.publish_track(
         rtc.LocalAudioTrack.create_audio_track("mic", source),
@@ -103,6 +107,7 @@ async def main() -> None:
         w.setnchannels(1), w.setsampwidth(2), w.setframerate(RATE), w.writeframes(audio.tobytes())
     voiced = float((np.abs(audio) > 500).mean())
     print(f"\nrecorded {len(audio) / RATE:.1f} s of agent audio ({voiced:.0%} of it above the noise floor)")
+    print("timing from start: " + ", ".join(f"{k} {v:.2f} s" for k, v in marks.items()))
     print("\n".join(transcripts) or "(no transcripts received)")
 
 

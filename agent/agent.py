@@ -132,7 +132,7 @@ server = AgentServer(num_idle_processes=1, setup_fnc=prewarm)
 # Raise VAD_THRESHOLD (0 to 1) if it reacts to background chatter; lower it if it misses the guest.
 TURN_DETECTION = ServerVad(
     type="server_vad",
-    threshold=float(os.environ.get("VAD_THRESHOLD", "0.7")),
+    threshold=float(os.environ.get("VAD_THRESHOLD", "0.5")),
     prefix_padding_ms=300,
     silence_duration_ms=600,
 )
@@ -142,7 +142,7 @@ TURN_DETECTION = ServerVad(
 # (web_server.py reads the same variable), or LiveKit may send your page to someone else's agent.
 @server.rtc_session(agent_name=os.environ.get("AGENT_NAME", "fortune-teller"))
 async def fortune_teller(ctx: JobContext) -> None:
-    push_to_talk = os.environ.get("PUSH_TO_TALK", "1") == "1"
+    push_to_talk = os.environ.get("PUSH_TO_TALK", "0") == "1"  # default: hands-free, like a real conversation
     session = AgentSession(
         llm=inference.RealtimeModel(
             model=os.environ.get("REALTIME_MODEL", "openai/gpt-realtime-2.1"),
