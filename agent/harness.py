@@ -184,7 +184,7 @@ async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = Fals
 SHUFFLE_TASK_ = "can you shuffle these cards using both arms"
 SHOW_TASK_ = "pick up the card from the handle and show it, then put it back down"
 ACT = [("Shuffle, round 1 of 3", SHUFFLE_TASK_, 30), ("Shuffle, round 2 of 3", SHUFFLE_TASK_, 30),
-       ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30), ("Show one card", SHOW_TASK_, 60)]
+       ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30), ("Show one card", SHOW_TASK_, 90)]
 
 
 async def run_act(on_step=None) -> dict:
@@ -210,6 +210,12 @@ async def run_act(on_step=None) -> dict:
             if STOP_REQUESTED:
                 await on_step("stop", "Stopped: arms hold, still connected")
                 return {"ok": False}
+            if task == SHOW_TASK_:
+                # The show was recorded from home with the cards on the table. Stop the shuffle, then home: the home
+                # move opens the grippers, so a card still held drops onto the table on the way. Then show, fresh.
+                await on_step("policy", "Back to the start position before showing a card")
+                await _agent("POST", "/stop", timeout=70)
+                await _agent("POST", "/home", timeout=70)
             await on_step("policy", f"{label}: {secs} s")
             status = await agent_status() or {}
             code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=i == len(ACT) - 1)
