@@ -33,9 +33,15 @@ HOST = os.environ.get("ROBOT_HOST", "pah@10.103.0.133")
 LOCAL_PORT = 8092
 API = f"http://127.0.0.1:{LOCAL_PORT}"
 
-SHUFFLE = "shuffle the grey cards on the table using both arms"
-PICK_AND_SHOW = "pick up the grey card from the handle and hold it up high so its back is completely visible"
-PUT_DOWN = "put the grey card back down on the table"
+# Today's table: five small wooden blocks in a row across the table, one arm at each end. Until the printed cards
+# arrive the show uses the blocks. Grasps of these blocks lasted under a second in today's runs, so the shuffle
+# slides the blocks (like a fortune teller mixing cards face down) and alternates with the wording Ramsha tested.
+SHUFFLES = [
+    "slide the wooden blocks around the table with both arms to mix them up",
+    "can you shuffle these blocks using both arms",
+]
+PICK_AND_SHOW = "pick up the wooden block in the middle of the table and hold it up high"
+PUT_DOWN = "put the wooden block back down on the table"
 
 
 def plan(rounds: int) -> list[dict]:
@@ -43,12 +49,12 @@ def plan(rounds: int) -> list[dict]:
     steps = []
     for i in range(rounds):
         steps.append({"say": "The cards must forget their order..." if i == 0 else "Again...",
-                      "prompt": SHUFFLE, "seconds": 15})
+                      "prompt": SHUFFLES[i % len(SHUFFLES)], "seconds": 15})
     steps.append({"say": "Now the cards are ready. My hands will choose the one that is yours.",
                   "prompt": PICK_AND_SHOW, "seconds": 30})
-    steps.append({"say": "(Reveal: the overhead camera reads the card while it is held up.)",
+    steps.append({"say": "(Reveal: the Fortune Teller names what the chosen piece means.)",
                   "prompt": None, "seconds": 6})
-    steps.append({"say": "The card has spoken. I return it to the table.",
+    steps.append({"say": "It has spoken. I return it to the table.",
                   "prompt": PUT_DOWN, "seconds": 20})
     return steps
 
