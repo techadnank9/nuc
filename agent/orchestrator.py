@@ -17,7 +17,7 @@ its view page (port 8093), both tunnelled over SSH. The person at the emergency 
 
 On the station itself (no tunnel; uv builds a throwaway env, dream-env is untouched):
     export ANTHROPIC_API_KEY=...
-    uv run --no-project --with anthropic --with python-dotenv python orchestrator.py --goal "..." --live
+    uv run --no-project --with "anthropic>=2.6" --with python-dotenv python orchestrator.py --goal "..." --live
 
 From agent/ on a laptop (ANTHROPIC_API_KEY in agent/.env, or exported; needs SSH key access to the station):
     uv run python orchestrator.py --goal "move the wooden block at the end of the row to the other end"   # plan only
