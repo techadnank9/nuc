@@ -160,6 +160,58 @@
   .actrow { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:-4px 0 12px; }
   .actrow .actbtn { margin:0; }
   .actbtn { width:100%; min-height:52px; margin:4px 0 12px; font-size:1.05rem; }
+  #operator[hidden] { display:none; }
+  .stationbtn { width:100%; min-height:52px; margin:0 0 10px; border-radius:var(--r-ctl); border:0; font-weight:700;
+                font-size:1.05rem; background:var(--jade); color:#06261f; cursor:pointer; }
+  .stationbtn[hidden] { display:none; }
+  .ghostbtn { flex:1; min-height:38px; border-radius:var(--r-ctl); background:transparent; color:var(--dim);
+              border:1px solid #ffffff2a; cursor:pointer; font-size:13px; }
+  .ghostbtn:hover:not(:disabled) { color:var(--parchment); border-color:var(--parchment); }
+  .now { display:grid; gap:8px; margin:0 0 12px; }
+  .nowbox { border-radius:10px; padding:8px 10px; background:#ffffff08; border-left:4px solid var(--brass); }
+  .nowbox.tester { border-left-color:var(--jade); }
+  .nowbox small { display:block; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; color:var(--dim); }
+  .nowbox small i { font-style:normal; text-transform:none; letter-spacing:0; }
+  .nowbox p { margin:3px 0 0; font-size:14px; line-height:1.4; color:var(--parchment); }
+  .nowbox.dream p { font-weight:600; }
+  aside.reading { min-width:0; overflow-x:hidden; overflow-y:auto; max-height:calc(100vh - 90px); }
+  aside.reading .block { min-width:0; }
+  .stepbtn { min-width:0; } .stepbtn em { overflow-wrap:anywhere; }
+  .stepbtn:hover:not(:disabled) { border-color:var(--brass); background:#ffffff12; }
+  .stepbtn:active:not(:disabled) { transform:scale(.98); }
+  .stepopts select { max-width:100%; }
+  .listen { margin:10px auto 0; max-width:460px; padding:12px 16px; border-radius:12px; text-align:center;
+            font-weight:800; font-size:1.05rem; letter-spacing:.03em; }
+  .listen[hidden] { display:none; }
+  .listen.off { background:#e0745a26; color:#f3c2b4; border:2px solid var(--ember); }
+  .listen.on { background:#4fb3a233; color:#d6fff6; border:2px solid var(--jade); animation:listenpulse 1s infinite; }
+  .listen.sent { background:#c9a22726; color:#f6e7b8; border:2px solid var(--brass); }
+  .listen.err { background:#e0745a55; color:#fff; border:2px solid var(--ember); }
+  @keyframes listenpulse { 50% { box-shadow:0 0 0 6px #4fb3a233; } }
+  .robotsteps { display:flex; flex-direction:column; gap:8px; margin:6px 0 10px; }
+  .robotsteps .stepbtn { width:100%; margin:0; }
+  .feed img:not([src]) { visibility:hidden; } /* no frame yet: hide the broken-image icon and its caption */
+  .stepbtn { display:grid; grid-template-columns:34px 1fr; grid-template-rows:auto auto; align-items:center; text-align:left;
+             gap:0 10px; padding:10px 12px; border-radius:var(--r-ctl); border:2px solid #ffffff1f; background:#ffffff08;
+             color:var(--parchment); cursor:pointer; }
+  .stepbtn b { grid-row:span 2; width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
+               background:var(--brass); color:#2a1d05; font-size:15px; }
+  .stepbtn span { font-weight:700; font-size:1.05rem; } .stepbtn em { font-style:normal; font-size:12.5px; color:var(--dim); }
+  .stepbtn[data-state="running"]:disabled { opacity:1; }
+  .stepbtn[data-state="running"] { border-color:var(--brass); box-shadow:0 0 0 3px #c9a22733; }
+  .stepbtn[data-state="running"] b { animation:pulse 1.2s infinite; }
+  .stepbtn[data-state="ok"] { border-color:var(--jade); } .stepbtn[data-state="ok"] b { background:var(--jade); }
+  .stepbtn[data-state="bad"] { border-color:var(--ember); } .stepbtn[data-state="bad"] b { background:var(--ember); }
+  @keyframes pulse { 50% { transform:scale(1.15); } }
+  .stepopts { display:flex; gap:12px; flex-wrap:wrap; font-size:13px; color:var(--dim); margin-bottom:10px; }
+  .stepopts select { margin-left:4px; }
+  .log b.who { font-weight:700; margin-right:3px; } .log b.dream-1 { color:var(--brass); } .log b.tester { color:var(--jade); }
+  .cmd button { transition:transform .08s, opacity .2s, box-shadow .2s; }
+  .cmd button:active:not(:disabled) { transform:scale(.97); }
+  .cmd button:disabled { opacity:.4; cursor:not-allowed; }
+  .cmd button.pressed { box-shadow:0 0 0 3px var(--parchment) inset; }
+  .cmd button.refused { box-shadow:0 0 0 3px var(--ember) inset; }
+  .linkbad { color:#f3c2b4; font-weight:600; }
   .cmd .mode.live { color:var(--ember); font-weight:600; }
   .cmd .err { color:#f3c2b4; font-size:13px; min-height:18px; margin-top:6px; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
@@ -194,7 +246,11 @@
       <div class="tag"><i></i><span id="tRight">Right hand</span></div>
     </div>
     <div class="block handslog">
-      <h2>What the hands are doing</h2>
+      <h2>What's going on</h2>
+      <div class="now">
+        <div class="nowbox dream"><small>Sent to Dream-1 <i id="nowDreamAge"></i></small><p id="nowDream">Nothing yet: press a step on the right.</p></div>
+        <div class="nowbox tester"><small>Tester says <i id="nowTesterAge"></i></small><p id="nowTester">It starts watching when a step runs.</p></div>
+      </div>
       <ol class="log" id="log" aria-live="polite"><li class="none">The arms are resting. Begin a reading to wake them.</li></ol>
     </div>
   </section>
@@ -212,6 +268,7 @@
         </div>
       </div>
       <div class="hint" id="micHint"><b>Tap to start</b>, then just talk</div>
+      <div class="listen" id="listenBar" hidden></div>
     </div>
     <div class="convo">
       <h2>Transcript</h2>
@@ -252,16 +309,32 @@
       </div>
     </div>
     <div class="block cmd armsblock">
-      <h2>Arms</h2>
+      <h2>Robot</h2>
       <div class="row">
         <button class="stop" id="cmdStop">Stop arms</button>
         <button class="homebtn" id="homeBtn" type="button">Reset &amp; home</button>
       </div>
+      <div class="row">
+        <button class="ghostbtn" id="stationRestartBtn" type="button">Restart station</button>
+      </div>
+      <div class="robotsteps">
+        <button class="stepbtn" type="button" data-step="shuffle"><b>1</b><span>Shuffle</span><em>the fine-tune mixes the cards</em></button>
+        <button class="stepbtn" type="button" data-step="grabhold"><b>2</b><span>Grab &amp; hold up</span><em>one arm picks a card up by the handle, holds it up 5 s, puts it down, home</em></button>
+      </div>
+      <button class="stationbtn" id="stationUpBtn" type="button" hidden>Start the station</button>
+      <div class="stepopts">
+        <label>Shuffles <select id="stepRounds"><option selected>1</option><option>2</option><option>3</option></select></label>
+        <label>Moves <select id="stepWide"><option value="1" selected>wider</option><option value="0">trained wording</option></select></label>
+        <label>Grab model <select id="stepModel"><option value="1" selected>fine-tune (trained show)</option><option value="0">base Dream-1 (one arm, sticker)</option></select></label>
+        <label>Arm <select id="stepCard"><option value="right" selected>right (takes the card nearest it)</option><option value="left">left (takes the card nearest it)</option></select></label>
+      </div>
+
       <div class="mode" id="cmdMode">Checking robot mode…</div>
       <div class="mode" id="cmdModel"></div>
       <div class="err" id="cmdErr"></div>
     </div>
 
+    <div id="operator" hidden>
     <div class="block cmd">
       <h2>Fortune Teller moves</h2>
       <p class="sub">Our trained model: the moves you recorded.</p>
@@ -314,6 +387,7 @@
         <button class="go" id="cmdGo">Send to Dream-1</button>
       </div>
     </details>
+    </div>
   </aside>
 
 </main>
@@ -386,7 +460,11 @@ function log(kind, text) {
   const list = $("log"); list.querySelector(".none")?.remove();
   const li = document.createElement("li"); li.className = kind;
   li.innerHTML = `<time>${new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false})}</time><i></i><span></span>`;
-  li.querySelector("span").textContent = text;
+  const span = li.querySelector("span"), cut = text.indexOf(" › ");
+  if (cut > 0 && cut < 10) {   /* "Dream-1 › …" / "Tester › …": the speaker in colour, the words exactly as sent/said */
+    const who = document.createElement("b"); who.className = "who " + text.slice(0, cut).toLowerCase();
+    who.textContent = text.slice(0, cut); span.append(who, " " + text.slice(cut + 3));
+  } else span.textContent = text;
   list.prepend(li);
   while (list.children.length > 60) list.lastElementChild.remove();
 }
@@ -456,13 +534,26 @@ async function prepare() {
 }
 prepare(); setInterval(() => { if (!room) prepare(); }, 30 * 60 * 1000);
 
+/* ---------- Louder voice: Web Audio gain (?volume=4 in the URL to change; 1 = normal) + a limiter so it never clips */
+const VOLUME = Math.max(0.5, Math.min(8, parseFloat(new URLSearchParams(location.search).get("volume")) || 3.5));
+let audioCtx = null;
+function boost(mediaTrack) {
+  const src = audioCtx.createMediaStreamSource(new MediaStream([mediaTrack]));
+  const gain = audioCtx.createGain(); gain.gain.value = VOLUME;
+  const limiter = audioCtx.createDynamicsCompressor();
+  limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.003; limiter.release.value = 0.1;
+  src.connect(gain).connect(limiter).connect(audioCtx.destination);
+}
+
 async function begin() {
+  audioCtx ??= new AudioContext(); audioCtx.resume();   /* created on the guest's tap, as browsers require */
   $("startBtn").hidden = true; voice("busy", "Connecting");
   $("lines").innerHTML = ""; bubbles.clear(); asked = false; resetCard(); progress("listen");
   try {
     if (!ready || Date.now() - ready.at > 50 * 60 * 1000) await prepare();
     if (!ready) throw new Error("the page server did not answer");
-    const { url, token } = ready; ready = null; prepare();   /* use the warm token; get the next one ready */
+    const { url, token, ptt } = ready; ready = null; prepare();   /* use the warm token; get the next one ready */
+    PTT = !!ptt;
     room = new Room({ adaptiveStream: true, dynacast: true });
 
     room.registerTextStreamHandler("lk.transcription", async (reader, from) => {
@@ -482,7 +573,11 @@ async function begin() {
       if (ev.state === "not_ready") { $("fOverhead").classList.remove("drawing"); log("bad", "The robot is not ready: " + ev.error); }
     });
     room.on(RoomEvent.TrackSubscribed, (track) => {
-      if (track.kind === Track.Kind.Audio) { const el = track.attach(); el.hidden = true; document.body.appendChild(el); }
+      if (track.kind !== Track.Kind.Audio) return;
+      // Chrome only feeds a remote WebRTC track into Web Audio while an element plays it: keep a muted element and
+      // route her voice through the volume boost instead.
+      const el = track.attach(); el.hidden = true; el.muted = true; document.body.appendChild(el);
+      boost(track.mediaStreamTrack);
     });
     room.on(RoomEvent.ParticipantAttributesChanged, (changed, p) => {
       if (p.isLocal || !("lk.agent.state" in changed)) return;
@@ -516,6 +611,7 @@ async function begin() {
 async function finish(fromEvent = false) {
   if (room && !fromEvent) await room.disconnect();
   room = null; micOn = false; $("micBtn").classList.remove("live"); $("micHint").innerHTML = "<b>Tap to start</b>, then just talk";
+  $("listenBar").hidden = true;
   $("pip").classList.add("off"); $("fOverhead").classList.remove("drawing");
   ["camBtn","camSelect"].forEach(id => $(id).disabled = true);
   $("startBtn").hidden = false; $("endBtn").hidden = true; voice("", "Voice");
@@ -540,27 +636,78 @@ $("micBtn").addEventListener("click", async () => {
     $("micHint").innerHTML = "<b>Connecting…</b>";
     await begin();
     if (room && micOk) await setMic(true);
+    if (room && PTT) { $("micHint").innerHTML = "<b>Hold space</b> (or hold the button) to talk"; listenBar("off", NOT_LISTENING); }
     return;
   }
+  if (PTT) return;                               /* push-to-talk: holding the button talks; a tap does nothing */
   if (micOk) await setMic(!micOn);
 });
 
 /* ---------- Direct commands to Dream-1 (operator box) ---------- */
 let evSince = -1;
+/* Arm buttons: clickable only when the page server answers, a robot is connected and the arms are free.
+   Stop arms stays clickable whenever there is a robot to stop. */
+let serverOk = false, armsBusy = false, robotOn = false, runningStep = null, lastOutcome = "", stationUp = true;
+let dreamAt = 0, testerAt = 0;
+const ago = (t) => t ? `· ${Math.round((Date.now() - t) / 1000)} s ago` : "";
+setInterval(() => { $("nowDreamAge").textContent = ago(dreamAt); $("nowTesterAge").textContent = ago(testerAt); }, 1000);
+const ARM_BTNS = ".stepbtn, [data-act], [data-staged], #orchBtn, #cmdGo";
+function refreshButtons() {
+  document.querySelectorAll(ARM_BTNS).forEach((b) => { if (!b.classList.contains("pressed")) b.disabled = !serverOk || !robotOn || armsBusy || !stationUp; });
+  $("cmdStop").disabled = !serverOk || !robotOn;
+  if (!$("homeBtn").classList.contains("pressed")) $("homeBtn").disabled = !serverOk || !robotOn || !stationUp;  /* also mid-run: it stops first */
+  $("stationUpBtn").hidden = !(serverOk && robotOn && !stationUp);
+  for (const id of ["stationUpBtn", "stationRestartBtn"])
+    if (!$(id).classList.contains("pressed")) $(id).disabled = !serverOk || !robotOn || armsBusy;
+}
+/* One press: the button shows it was pressed, is locked while the request is out, then says what happened. */
+async function press(btn, busyLabel, send) {
+  const label = btn.dataset.label ??= btn.textContent;
+  btn.classList.add("pressed"); btn.classList.remove("refused"); btn.disabled = true; btn.textContent = busyLabel;
+  $("cmdErr").textContent = "";
+  let ok = false;
+  try {
+    const r = await send();
+    ok = r.ok;
+    if (!ok) $("cmdErr").textContent = (await r.json().catch(() => ({}))).error || "Refused by the page server.";
+  } catch { $("cmdErr").textContent = "The page server did not answer: is ./start_web.sh still running?"; }
+  btn.textContent = ok ? "Sent ✓" : "Refused";
+  if (!ok) btn.classList.add("refused");
+  setTimeout(() => { btn.classList.remove("pressed", "refused"); btn.textContent = label; refreshButtons(); }, ok ? 1500 : 3000);
+  return ok;
+}
 async function pollEvents() {
   try {
     const d = await (await fetch(`/robot/events?since=${evSince}`, { cache: "no-store" })).json();
-    for (const e of d.events) { evSince = e.id; log(e.step === "failed" ? "bad" : e.step === "done" ? "ok" : "run", e.text); }
+    serverOk = true; armsBusy = !!d.busy; robotOn = !!d.robot; stationUp = d.station?.up !== false;
+    for (const e of d.events) {
+      evSince = e.id; log(e.step === "failed" ? "bad" : e.step === "done" ? "ok" : "run", e.text);
+      if (e.text.startsWith("Dream-1 › ")) { $("nowDream").textContent = e.text.slice(10); dreamAt = Date.now(); }
+      if (e.text.startsWith("Tester › ")) { $("nowTester").textContent = e.text.slice(9); testerAt = Date.now(); }
+      if (runningStep && !e.text.startsWith("Tester ›") && (e.step === "done" || e.step === "failed" || e.step === "stop")) lastOutcome = e.step;
+    }
+    if (runningStep && d.busy) runningStep.dataset.seenBusy = "1";
+    if (runningStep && !d.busy && runningStep.dataset.seenBusy) {   /* the step just finished: mark it done or failed */
+      runningStep.dataset.state = lastOutcome === "done" ? "ok" : "bad"; delete runningStep.dataset.seenBusy; runningStep = null;
+    }
     const m = $("cmdMode");
     m.className = "mode" + (d.live ? " live" : "");
     m.textContent = d.robot ? "The arms move on every command. Keep a hand on the emergency stop."
       : "No robot connected (started with DRAW_MODE=manual): commands are refused.";
     $("cmdModel").textContent = d.model ? `Model: our fine-tune (${d.model})` : "Model: Dream-1 base (fine-tune not set)";
-    $("cmdGo").disabled = d.busy; $("cmdGo").textContent = d.busy ? "Running…" : "Send to Dream-1";
-    document.querySelectorAll("[data-act], [data-staged], #orchBtn").forEach((b) => b.disabled = d.busy);
-    $("actBtn").textContent = d.busy ? "Arms working…" : "Shuffle & show a card";
+    if (d.robot && d.station?.up === false) {
+      m.className = "mode linkbad";
+      m.textContent = "The station agent is not running. On the station: source ~/dream-env/bin/activate && dreamcli robot up joint --view";
+    }
+    if (!$("cmdGo").classList.contains("pressed")) $("cmdGo").textContent = d.busy ? "Running…" : "Send to Dream-1";
+    if (!$("actBtn").classList.contains("pressed")) $("actBtn").textContent = d.busy ? "Arms working…" : "Shuffle & show a card";
     $("fOverhead").classList.toggle("drawing", d.busy);
-  } catch {}
+  } catch {
+    serverOk = false;
+    $("cmdMode").className = "mode linkbad";
+    $("cmdMode").textContent = "The page server is not answering: start it again with ./start_web.sh, then reload. Buttons are off until then.";
+  }
+  refreshButtons();
   setTimeout(pollEvents, 700);
 }
 pollEvents();
@@ -574,33 +721,87 @@ $("cmdGo").onclick = async () => {
   $("cmdErr").textContent = "";
   const task = $("cmdText").value.trim();
   if (!task) { $("cmdErr").textContent = "Write what the arms should do first."; return; }
-  const r = await fetch("/robot/command", { method: "POST", headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ task, seconds: Number($("cmdSecs").value) }) });
-  if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The command was refused.";
+  await press($("cmdGo"), "Sending…", () => fetch("/robot/command", { method: "POST", headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ task, seconds: Number($("cmdSecs").value) }) }));
 };
 $("cmdText").addEventListener("input", () => $("cmdErr").textContent = "");
-$("cmdStop").onclick = async () => { await fetch("/robot/stop", { method: "POST" }); };
+$("cmdStop").onclick = () => press($("cmdStop"), "Stopping…", () => fetch("/robot/stop", { method: "POST" }));
 document.querySelectorAll("[data-staged]").forEach((b) => b.onclick = async () => {
   lastTrip = -1;
   $("cmdErr").textContent = "";
-  const r = await fetch("/robot/staged", { method: "POST", headers: { "Content-Type": "application/json" },
-                                           body: JSON.stringify({ kind: b.dataset.staged, color: $("cardColor").value }) });
-  if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
+  await press(b, "Sending…", () => fetch("/robot/staged", { method: "POST", headers: { "Content-Type": "application/json" },
+                                           body: JSON.stringify({ kind: b.dataset.staged, color: $("cardColor").value }) }));
 });
 $("orchBtn").onclick = async () => {
   $("cmdErr").textContent = "";
-  const r = await fetch("/robot/orchestrate", { method: "POST", headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({ goal: $("orchGoal").value }) });
-  if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
+  await press($("orchBtn"), "Asking Astra…", () => fetch("/robot/orchestrate", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ goal: $("orchGoal").value }) }));
 };
-$("homeBtn").onclick = async () => { await fetch("/robot/home", { method: "POST" }); };
+document.querySelectorAll(".stepbtn").forEach((b) => b.onclick = async () => {
+  document.querySelectorAll(".stepbtn").forEach((x) => { if (x.dataset.step === "shuffle" || b.dataset.step === "shuffle") x.dataset.state = ""; });
+  lastOutcome = ""; b.dataset.label = b.innerHTML;
+  const ok = await pressStep(b);
+  if (ok) { runningStep = b; b.dataset.state = "running"; armsBusy = true; }
+});
+async function pressStep(b) {   /* like press(), but keeps the step's number and caption */
+  b.disabled = true; $("cmdErr").textContent = "";
+  try {
+    const r = await fetch("/robot/step", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step: b.dataset.step, card: $("stepCard").value, rounds: Number($("stepRounds").value),
+                             wide: $("stepWide").value === "1", finetuned: $("stepModel").value === "1" }) });
+    if (!r.ok) { $("cmdErr").textContent = (await r.json().catch(() => ({}))).error || "Refused."; b.dataset.state = "bad"; }
+    return r.ok;
+  } catch { $("cmdErr").textContent = "The page server did not answer: is ./start_web.sh still running?"; return false; }
+  finally { refreshButtons(); }
+}
+$("operator").hidden = !new URLSearchParams(location.search).has("operator");
+const armOpt = () => { $("stepCard").disabled = $("stepModel").value === "1"; };
+$("stepModel").onchange = armOpt; armOpt();   /* the fine-tune picks its own arm and card */   /* old panels: ?operator */
+$("stationUpBtn").onclick = () => press($("stationUpBtn"), "Starting the station… (about 30 s)", () =>
+  fetch("/robot/station", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }));
+$("stationRestartBtn").onclick = () => press($("stationRestartBtn"), "Restarting…", () =>
+  fetch("/robot/station", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restart: true }) }));
+$("homeBtn").onclick = () => press($("homeBtn"), "Homing…", () => fetch("/robot/home", { method: "POST" }));
 document.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
   lastTrip = -1;
   $("cmdErr").textContent = "";
-  const r = await fetch("/robot/act", { method: "POST", headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ act: b.dataset.act, rounds: Number($("rounds").value), card: $("cardColor").value }) });
-  if (!r.ok) $("cmdErr").textContent = (await r.json()).error || "The arms are busy.";
+  await press(b, "Sending…", () => fetch("/robot/act", { method: "POST", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ act: b.dataset.act, rounds: Number($("rounds").value), card: $("cardColor").value }) }));
 });
+
+/* ---------- Push-to-talk: hold space (or the mic button) to talk; release and she answers ---------- */
+let PTT = false, talking = false;
+function listenBar(state, text) {
+  const b = $("listenBar"); b.hidden = !(room && PTT); b.className = "listen " + state; b.textContent = text;
+}
+const NOT_LISTENING = "● NOT LISTENING · hold SPACE (or the mic button) to talk";
+async function turn(method) {   /* true when the Fortune Teller's agent got it */
+  const agentP = room && ([...room.remoteParticipants.values()].find((p) => p.isAgent) || [...room.remoteParticipants.values()][0]);
+  if (!agentP) return false;
+  try { await room.localParticipant.performRpc({ destinationIdentity: agentP.identity, method, payload: "", responseTimeout: 4000 }); return true; }
+  catch { return false; }
+}
+async function talkStart() {
+  if (!room || !PTT || talking) return;
+  talking = true; if (!micOn) await setMic(true);
+  $("micBtn").classList.add("live"); $("micHint").innerHTML = "<b>Listening…</b> release to send";
+  listenBar("on", "● LISTENING · release SPACE to send");
+  if (!(await turn("start_turn")) && talking)
+    listenBar("err", "✕ She did not get that: is the reading connected? Release and try again");
+}
+async function talkEnd() {
+  if (!talking) return;
+  talking = false; $("micBtn").classList.remove("live");
+  $("micHint").innerHTML = "<b>Hold space</b> (or hold the button) to talk";
+  const ok = await turn("end_turn");
+  listenBar(ok ? "sent" : "err", ok ? "✓ Sent · she is answering" : "✕ She did not get that: try again");
+  setTimeout(() => { if (!talking && room) listenBar("off", NOT_LISTENING); }, ok ? 2500 : 4000);
+}
+const typing = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+document.addEventListener("keydown", (e) => { if (e.code === "Space" && PTT && room && !typing(e)) { e.preventDefault(); if (!e.repeat) talkStart(); } });
+document.addEventListener("keyup", (e) => { if (e.code === "Space" && PTT && room && !typing(e)) { e.preventDefault(); talkEnd(); } });
+$("micBtn").addEventListener("pointerdown", () => { if (PTT && room) talkStart(); });
+["pointerup", "pointerleave", "pointercancel"].forEach((ev) => $("micBtn").addEventListener(ev, () => { if (PTT && room) talkEnd(); }));
 
 /* level ring: show the guest that the mic hears them */
 setInterval(() => {

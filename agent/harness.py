@@ -128,15 +128,28 @@ async def read_card() -> dict:
 
 
 async def relay(action: str) -> None:
-    """Tell the station's camera relay (station_cam_relay.py) to release or retake the cameras; no-op if it is not running."""
+    """Tell the station's camera relay (station_cam_relay.py) to release or retake the cameras; no-op if it is not running.
+    While the station agent is up it owns the cameras the whole time, so the relay stays on what Dream-1 sees."""
+    if action == "resume" and await agent_status() is not None:
+        return
     await _sh(SSH + [f"curl -s -m 8 -X POST 127.0.0.1:8097/{action} >/dev/null 2>&1 || true"], 20)
 
 
 AGENT_API = "http://127.0.0.1:8091"  # the station agent (dreamcli robot up), on the station itself
 
 
+PROMPT_HOOK = None  # set by the page server: called with every prompt sent to Dream-1, so the page can show it
+
+
 async def _agent(method: str, path: str, body: dict | None = None, timeout: int = 20) -> dict | None:
     """One call to the station agent over SSH; None when no agent answers (then the page runs dreamcli itself)."""
+    if PROMPT_HOOK and path in ("/start", "/prompt") and body and body.get("prompt"):
+        model = body.get("checkpoint") or ""
+        who = "fine-tune" if model and model != BASE_MODEL else "base Dream-1" if model else "Dream-1"
+        try:
+            await PROMPT_HOOK(f'Dream-1 › ({who}) "{body["prompt"]}"')
+        except Exception:  # noqa: BLE001 - the page log must never stop the arms
+            pass
     data = f"-H 'Content-Type: application/json' -d {shlex.quote(json.dumps(body))}" if body is not None else ""
     code, out = await _sh(SSH + [f"curl -s -m {timeout - 5} -X {method} {data} {AGENT_API}{path}"], timeout)
     try:
@@ -169,9 +182,78 @@ async def _show_check(baseline: int) -> dict:
         return {}
 
 
+async def _jaw_open(arm: str | None) -> bool:
+    """Has `arm` (l or r) let go: its gripper open (> 0.8) for the last second of the live run log?"""
+    if arm not in ("l", "r"):
+        return False
+    code, out = await _sh(SSH + ["head -1 ~/.dreamlabs/last-run.csv; tail -n 40 ~/.dreamlabs/last-run.csv"], 15)
+    if code:
+        return False
+    rows = list(csv.DictReader(out.strip().splitlines()))
+    try:
+        last_t = float(rows[-1]["t_s"])
+        recent = [float(r[f"gripper_{arm}"]) for r in rows if last_t - float(r["t_s"]) <= 1.0]
+    except (IndexError, KeyError, ValueError):
+        return False
+    return len(recent) >= 3 and all(j > 0.8 for j in recent)
+
+
+# Set by the page server's tester while "Grab & hold up" runs: it looks at the cameras and says when a card is up
+# (and when it is back down). The gripper data misses thick taped handles; the tester's eyes do not.
+TESTER_CARD_UP = False
+TESTER_SHOW_DONE = False
+
+
+async def _hold_state() -> dict:
+    """Is an arm holding a card up right now? Read from the last ~15 s of the live run log (no station script needed).
+
+    holding: for the last 1.5 s the jaw is blocked short of its command (measured > commanded + 0.03: something is
+    between the fingers, so thick taped or stickered handles count too) and not open (measured < 0.7).
+    up: that arm's shoulder (joint 1) is >= 0.3 rad above its lowest point in the window.
+    rising: it rose > 0.04 rad in the last second (freeze once it stops, at the top of the lift).
+    """
+    code, out = await _sh(SSH + ["head -1 ~/.dreamlabs/last-run.csv; tail -n 300 ~/.dreamlabs/last-run.csv"], 15)
+    if code:
+        return {}
+    try:
+        rows = list(csv.DictReader(out.strip().splitlines()))
+        t = [float(r["t_s"]) for r in rows]
+    except (KeyError, ValueError):
+        return {}
+    if len(rows) < 30:
+        return {}
+    for arm in ("l", "r"):
+        try:
+            meas = [float(r[f"gripper_{arm}"]) for r in rows]
+            cmd = [float(r[f"cmd_gripper_{arm}"]) for r in rows]
+            sh = [float(r[f"measured_{arm}1"]) for r in rows]
+        except (KeyError, ValueError):
+            continue
+        last = [i for i in range(len(rows)) if t[-1] - t[i] <= 1.5]
+        holding = all(meas[i] > cmd[i] + 0.03 and meas[i] < 0.7 for i in last)
+        up = sh[-1] - min(sh) >= 0.3
+        second = [i for i in range(len(rows)) if t[-1] - t[i] <= 1.0]
+        rising = sh[-1] - sh[second[0]] > 0.04
+        if holding:
+            return {"held": up, "gripping": True, "arm": arm, "rising": rising, "lift_rad": round(sh[-1] - min(sh), 2)}
+    return {"held": False, "gripping": False}
+
+
+async def _wait_card_up(baseline: int, end: float) -> dict:
+    """Wait until a card is held up and has stopped rising (the top of the lift), or `end` passes."""
+    while time.monotonic() < end and not STOP_REQUESTED:
+        await asyncio.sleep(1.0)
+        now = await _hold_state()
+        if now.get("held") and not now.get("rising"):
+            return now
+        if not now.get("held") and (await _show_check(baseline)).get("held"):  # the old check, as a fallback
+            return {"held": True, "arm": None}
+    return {}
+
+
 async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = False,
                         stop_at_end: bool = True, until_shown: bool = False,
-                        grab_within_s: float | None = None) -> tuple[int, str]:
+                        grab_within_s: float | None = None, hold_s: float = 0.0, on_step=None) -> tuple[int, str]:
     """Run `task` on the running station agent: the arms stay powered and the model stays warm between commands.
 
     Idle agent: start a run (with our checkpoint). Running agent: change the prompt, which starts a fresh episode in
@@ -197,11 +279,49 @@ async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = Fals
                 baseline, started = await _show_rows(), time.monotonic()
             else:
                 seen = await _show_check(baseline)
+                grip_now = await _hold_state() if hold_s else {}
+                if grip_now.get("held") and not grip_now.get("rising"):
+                    seen = {"held": True, "done": False, "arm": grip_now.get("arm")}
+                if hold_s and TESTER_CARD_UP and not seen.get("held"):
+                    seen = {"held": True, "done": False, "arm": grip_now.get("arm")}  # the tester saw it up
+                if not hold_s and TESTER_CARD_UP and TESTER_SHOW_DONE:
+                    # No freeze: the tester saw the card up and then back on the table, so this show is complete.
+                    await _agent("POST", "/stop", timeout=70)
+                    await _agent("POST", "/home", timeout=70)
+                    return 0, "shown"
+                if hold_s and TESTER_SHOW_DONE and not seen.get("held"):
+                    # The tester saw the card back on the table without ever seeing it up long enough: the move is
+                    # over, so stop here instead of running out the clock.
+                    await _agent("POST", "/stop", timeout=70)
+                    await _agent("POST", "/home", timeout=70)
+                    return 0, "shown"
+                if hold_s and seen.get("held") and not seen.get("done"):
+                    # Card up: freeze the arms (the gripper keeps the card) so the guest can read it, then let the
+                    # fine-tune finish its move from this pose (it puts the card back down), then home.
+                    await _agent("POST", "/stop", timeout=70)
+                    if on_step:
+                        await on_step("done", f"Card up: holding it still for {hold_s:g} s")
+                    await asyncio.sleep(hold_s)
+                    if STOP_REQUESTED:
+                        return 0, "shown"
+                    if on_step:
+                        await on_step("policy", "Putting the card back down")
+                    await _agent("POST", "/start", {"prompt": task, **({"checkpoint": CHECKPOINT} if CHECKPOINT else {})},
+                                 timeout=70)
+                    put_down_end = time.monotonic() + PUT_DOWN_S
+                    while time.monotonic() < put_down_end and not STOP_REQUESTED:
+                        await asyncio.sleep(1.5)
+                        if await _jaw_open(seen.get("arm")):
+                            break
+                    await _agent("POST", "/stop", timeout=70)
+                    await _agent("POST", "/home", timeout=70)
+                    return 0, "shown"
                 if seen.get("done"):
                     await _agent("POST", "/stop", timeout=70)
                     await _agent("POST", "/home", timeout=70)
                     return 0, "shown"
-                if grab_within_s and not seen.get("held") and time.monotonic() - started > grab_within_s:
+                if (grab_within_s and not seen.get("held") and not grip_now.get("gripping")
+                        and time.monotonic() - started > grab_within_s):
                     await _agent("POST", "/stop", timeout=70)  # no real grab in time: the caller retries
                     return 3, "no hold"
         if now.get("state") not in ("running", "starting"):
@@ -216,21 +336,32 @@ async def _run_on_agent(status: dict, task: str, budget: int, fresh: bool = Fals
 
 # One press of "Shuffle & show": the fine-tune's two trained instructions in a row (exact training sentences).
 SHUFFLE_TASK_ = "can you shuffle these cards using both arms"
+# "Wider moves": the trained sentence plus a request to carry each card further. The fine-tune learned only the exact
+# sentence, so this may help or hurt; the page lets you switch back to the trained wording.
+SHUFFLE_WIDE = ("can you shuffle these cards using both arms, and after you pick up a card carry it far across the "
+                "table before you put it down")
 SHOW_TASK_ = "pick up the card from the handle and show it, then put it back down"
 SHUFFLE_ROUNDS = [("Shuffle, round 1 of 3", SHUFFLE_TASK_, 30), ("Shuffle, round 2 of 3", SHUFFLE_TASK_, 30),
                   ("Shuffle, round 3 of 3", SHUFFLE_TASK_, 30)]
 SHOW = [("Show the card", SHOW_TASK_, 150)]
 SHOW_TRIES = 3     # Show the card: tries before giving up
 SHOW_GRAB_S = 90   # a try with no real grab (show_done.py "held") by then goes home and starts over
+# Card up: freeze the arms this long. 0 (default since the Nov 8 afternoon runs): no freeze, the fine-tune does its
+# whole trained show uninterrupted (freezing at the first "card up" cut it off before the card was fully lifted).
+SHOW_HOLD_S = float(os.environ.get("SHOW_HOLD_S", "0"))
+SHOW_REPEATS = int(os.environ.get("SHOW_REPEATS", "3"))  # Grab & hold up shows the card this many times, or until done
+FINISH_REQUESTED = False  # set when the guest has named the card: no more shows after the current one
+PUT_DOWN_S = 20    # after the hold, longest the fine-tune gets to put the card down before the arms go home
 ACTS = {"full": SHUFFLE_ROUNDS + SHOW, "shuffle": SHUFFLE_ROUNDS, "show": SHOW}
 ACT = ACTS["full"]
 
 
-async def run_act(on_step=None, name: str = "full", rounds: int = 1, card: str = "right") -> dict:
+async def run_act(on_step=None, name: str = "full", rounds: int = 1, card: str = "right", wide: bool = False) -> dict:
     """Run one of ACTS on the station agent from the start position: "full" (shuffle three rounds, then show one
     card), "shuffle" or "show". Each step is a fresh episode; the arms stay connected throughout."""
     rounds = max(1, min(int(rounds), 5))
-    shuffle = [(f"Shuffle, round {k} of {rounds}", SHUFFLE_TASK_, 30) for k in range(1, rounds + 1)]
+    shuffle = [(f"Shuffle, round {k} of {rounds}", SHUFFLE_WIDE if wide else SHUFFLE_TASK_, 30)
+               for k in range(1, rounds + 1)]
     # "full" = fine-tune shuffle, then the Grip first show (grab, confirm the hold, then lift): it holds better.
     steps = {"full": shuffle, "shuffle": shuffle, "show": SHOW}.get(name, shuffle)
     global STOP_REQUESTED
@@ -264,13 +395,16 @@ async def run_act(on_step=None, name: str = "full", rounds: int = 1, card: str =
             status = await agent_status() or {}
             if task == SHOW_TASK_:
                 # Up to SHOW_TRIES tries: a try with no real grab within SHOW_GRAB_S goes home and starts over.
+                global TESTER_CARD_UP, TESTER_SHOW_DONE
                 for attempt in range(1, SHOW_TRIES + 1):
+                    TESTER_CARD_UP = TESTER_SHOW_DONE = False
                     if attempt > 1:
                         await on_step("policy", f"No grip yet: back home, try {attempt} of {SHOW_TRIES}")
                         await _agent("POST", "/home", timeout=70)
                     status = await agent_status() or {}
                     code, out = await _run_on_agent(status, task, secs, fresh=True, stop_at_end=True,
-                                                    until_shown=True, grab_within_s=SHOW_GRAB_S)
+                                                    until_shown=True, grab_within_s=SHOW_GRAB_S,
+                                                    hold_s=SHOW_HOLD_S, on_step=on_step)
                     if STOP_REQUESTED or out != "no hold":
                         break
                 if out == "shown":
@@ -607,3 +741,228 @@ if __name__ == "__main__":
     ap.add_argument("--read-only", action="store_true", help="only read the card in the stand (no Dream run)")
     a = ap.parse_args()
     print(json.dumps(asyncio.run(read_card() if a.read_only else draw_card(a.mode)), indent=2))
+
+
+# --- The demo's three steps (the page's Robot panel): 1 Shuffle (run_act "shuffle"), 2 Grab, 3 Hold up -------------
+# The handles now carry a sticker (on white tape): the grab names it, so Dream-1 has a bright, distinct target.
+# HANDLE="handle" goes back to the plain wording, e.g. to compare grab rates.
+HANDLE = os.environ.get("HANDLE", "handle with the sticker on it")
+LIFT_WAIT_S = 30    # Hold up: longest wait for the card to be up (show_done "held") before freezing anyway
+GRABBED: str | None = None  # the arm ("l"/"r") holding a card after Grab, until Hold up puts it down
+
+
+def _target(card: str) -> str:
+    return {"left": "the card nearest the left arm", "right": "the card nearest the right arm"}.get(
+        card, f"the {card} card" if card else "the card nearest the right arm")
+
+
+async def run_grab(card: str = "right", on_step=None) -> dict:
+    """Step 2: base Dream-1 picks the card up by its (white-taped) handle; once the gripper data shows the handle
+    steady between the fingers, the arms freeze holding it. Up to GRAB_TRIES tries, each from the start position."""
+    global STOP_REQUESTED, GRABBED
+    on_step = on_step or _noop
+    STOP_REQUESTED, GRABBED = False, None
+    if await agent_status() is None:
+        await on_step("failed", "Start the station agent first (dreamcli robot up joint --view)")
+        return {"ok": False}
+    grab = f"pick up {_target(card)} by its {HANDLE} and hold it just above the table"
+    await relay("release")
+    try:
+        for attempt in range(1, GRAB_TRIES + 1):
+            if STOP_REQUESTED:
+                break
+            await on_step("policy", f"Grab, try {attempt} of {GRAB_TRIES}: {_target(card)}")
+            await _agent("POST", "/stop", timeout=70)
+            await _agent("POST", "/home", timeout=70)
+            reply = await _agent("POST", "/start", {"prompt": grab, "checkpoint": BASE_MODEL}, timeout=70)
+            if not reply or reply.get("error"):
+                await on_step("failed", f"the station agent refused: {(reply or {}).get('error', 'no answer')}")
+                return {"ok": False}
+            await asyncio.sleep(6)
+            baseline, t0, arm = await _show_rows(), time.monotonic(), None
+            while time.monotonic() - t0 < GRAB_WAIT_S and not STOP_REQUESTED:
+                code, out = await _sh(SSH + [f"{REMOTE_SHOW_DONE} grip {baseline}"], 15)
+                try:
+                    arm = json.loads(out.strip().splitlines()[-1]).get("arm") if code == 0 else None
+                except (IndexError, json.JSONDecodeError):
+                    arm = None
+                if arm:
+                    break
+                await asyncio.sleep(1)
+            if arm:
+                await _agent("POST", "/stop", timeout=70)  # freeze: the gripper keeps the handle
+                GRABBED = arm
+                await on_step("done", f"Grabbed: the {'left' if arm == 'l' else 'right'} arm holds the card "
+                                      f"(try {attempt}). Press Hold up next.")
+                return {"ok": True, "arm": arm, "tries": attempt}
+            await on_step("failed", f"No firm grip on try {attempt}")
+        await _agent("POST", "/stop", timeout=70)
+        await _agent("POST", "/home", timeout=70)
+        await on_step("stop" if STOP_REQUESTED else "failed",
+                      "Stopped: arms home" if STOP_REQUESTED else f"No firm grip in {GRAB_TRIES} tries: arms home")
+        return {"ok": False}
+    finally:
+        await relay("resume")
+
+
+async def run_hold_up(card: str = "right", on_step=None) -> dict:
+    """Step 3: lift the grabbed card up high, hold it still for SHOW_HOLD_S, put it back down, arms home.
+    Without a card in hand it grabs one first (step 2)."""
+    global STOP_REQUESTED, GRABBED
+    on_step = on_step or _noop
+    if not GRABBED:
+        await on_step("policy", "No card in hand yet: grabbing one first")
+        if not (await run_grab(card, on_step)).get("ok"):
+            return {"ok": False}
+    STOP_REQUESTED, arm = False, GRABBED
+    await relay("release")
+    try:
+        baseline = await _show_rows()
+        await _agent("POST", "/start", {"prompt": "keep holding the card and lift it up high so its face can be "
+                                                  "seen from the front", "checkpoint": BASE_MODEL}, timeout=70)
+        end = time.monotonic() + LIFT_WAIT_S
+        while time.monotonic() < end and not STOP_REQUESTED:
+            await asyncio.sleep(1.5)
+            if (await _show_check(baseline)).get("held"):
+                break
+        if STOP_REQUESTED:
+            raise asyncio.CancelledError
+        await _agent("POST", "/stop", timeout=70)
+        await on_step("done", f"Card up: holding it still for {SHOW_HOLD_S:g} s")
+        await asyncio.sleep(SHOW_HOLD_S)
+        if STOP_REQUESTED:
+            raise asyncio.CancelledError
+        await on_step("policy", "Putting the card back down")
+        await _agent("POST", "/start", {"prompt": "put the card back down on the table and open the gripper",
+                                        "checkpoint": BASE_MODEL}, timeout=70)
+        end = time.monotonic() + PUT_DOWN_S
+        while time.monotonic() < end and not STOP_REQUESTED:
+            await asyncio.sleep(1.5)
+            if await _jaw_open(arm):
+                break
+        await _agent("POST", "/stop", timeout=70)
+        await _agent("POST", "/home", timeout=70)
+        GRABBED = None
+        await on_step("done", "Card put down: arms back at the start position")
+        return {"ok": True}
+    except asyncio.CancelledError:
+        await _agent("POST", "/stop", timeout=70)
+        await _agent("POST", "/home", timeout=70)
+        GRABBED = None
+        await on_step("stop", "Stopped: arms home")
+        return {"ok": False}
+    finally:
+        await relay("resume")
+
+
+async def station_up(restart: bool = False, on_step=None) -> dict:
+    """Start the station agent on the robot ('dreamcli robot up joint --view'); restart=True stops it first.
+    Starting connects the arms and cameras only: nothing moves until a step is pressed."""
+    on_step = on_step or _noop
+    cmd = "source ~/dream-env/bin/activate && "
+    if restart:
+        await on_step("policy", "Restarting the station agent (dreamcli robot down, then up)")
+        cmd += "dreamcli robot down; sleep 2; "
+    else:
+        await on_step("policy", "Starting the station agent (dreamcli robot up joint --view)")
+    # The agent keeps running after this SSH call returns, so its output goes to a file, not this connection.
+    cmd += "nohup dreamcli robot up joint --view > /tmp/robot_up.log 2>&1 < /dev/null; sleep 3; tail -n 4 /tmp/robot_up.log"
+    code, out = await _sh(SSH + [f"bash -lc {shlex.quote(cmd)}"], 120)
+    for _ in range(20):  # it answers once the arms and cameras are open
+        if (await agent_status()) is not None:
+            await on_step("done", "Station agent running: arms connected, nothing moves until you press a step")
+            return {"ok": True}
+        await asyncio.sleep(2)
+    await on_step("failed", "The station agent did not come up: " + (out.strip().splitlines() or ["no output"])[-1][:200])
+    return {"ok": False}
+
+
+GRAB_HOLD_WAIT_S = 60  # Grab & hold up: longest one try may take to have the card up before going home to retry
+
+
+async def run_grab_hold(card: str = "right", on_step=None) -> dict:
+    """One button: pick a card up by its (stickered) handle and lift it up high, in one instruction to base Dream-1.
+    Once the card is up (show_done "held": gripper closed >= 3 s while the shoulder lifts), the arms freeze for
+    SHOW_HOLD_S, then it is put down and the arms go home. Up to GRAB_TRIES tries, each from the start position."""
+    global STOP_REQUESTED
+    on_step = on_step or _noop
+    STOP_REQUESTED = False
+    if await agent_status() is None:
+        await on_step("failed", "Start the station agent first (Start the station button)")
+        return {"ok": False}
+    # One arm only: the card nearest that arm's gripper is the easiest reach, and the other arm stays out of the way.
+    side = "left" if card == "left" else "right"
+    other = "right" if side == "left" else "left"
+    prompt = (f"using only the {side} arm, pick up the card nearest the {side} arm by its {HANDLE} and lift it up "
+              f"high; keep the {other} arm still")
+    await relay("release")
+    try:
+        for attempt in range(1, GRAB_TRIES + 1):
+            if STOP_REQUESTED:
+                break
+            await on_step("policy", f"Grab & hold up with the {side} arm, try {attempt} of {GRAB_TRIES}")
+            await _agent("POST", "/stop", timeout=70)
+            await _agent("POST", "/home", timeout=70)
+            baseline = await _show_rows()
+            reply = await _agent("POST", "/start", {"prompt": prompt, "checkpoint": BASE_MODEL}, timeout=70)
+            if not reply or reply.get("error"):
+                await on_step("failed", f"the station agent refused: {(reply or {}).get('error', 'no answer')}")
+                return {"ok": False}
+            seen = await _wait_card_up(baseline, time.monotonic() + GRAB_HOLD_WAIT_S)
+            if STOP_REQUESTED:
+                break
+            if not seen.get("held"):
+                await on_step("failed", f"Card not up within {GRAB_HOLD_WAIT_S} s on try {attempt}")
+                continue
+            if seen.get("arm") and seen["arm"] != side[0]:
+                await on_step("policy", f"Note: the {'left' if seen['arm'] == 'l' else 'right'} arm took the card, "
+                                        f"not the {side} one")
+            await _agent("POST", "/stop", timeout=70)  # freeze with the card up
+            await on_step("done", f"Card up (try {attempt}): holding it still for {SHOW_HOLD_S:g} s")
+            await asyncio.sleep(SHOW_HOLD_S)
+            if STOP_REQUESTED:
+                break
+            await on_step("policy", "Putting the card back down")
+            await _agent("POST", "/start", {"prompt": f"using only the {side} arm, put the card back down on the table "
+                                                      f"and open the gripper; keep the {other} arm still",
+                                            "checkpoint": BASE_MODEL}, timeout=70)
+            put_down_end = time.monotonic() + PUT_DOWN_S
+            while time.monotonic() < put_down_end and not STOP_REQUESTED:
+                await asyncio.sleep(1.5)
+                if await _jaw_open(seen.get("arm")):
+                    break
+            await _agent("POST", "/stop", timeout=70)
+            await _agent("POST", "/home", timeout=70)
+            await on_step("done", "Card put down: arms back at the start position")
+            return {"ok": True, "tries": attempt}
+        await _agent("POST", "/stop", timeout=70)
+        await _agent("POST", "/home", timeout=70)
+        await on_step("stop" if STOP_REQUESTED else "failed",
+                      "Stopped: arms home" if STOP_REQUESTED else f"No card up in {GRAB_TRIES} tries: arms home")
+        return {"ok": False}
+    finally:
+        await relay("resume")
+
+
+async def run_show_repeat(on_step=None, repeats: int | None = None) -> dict:
+    """Grab & hold up with the fine-tune: its whole trained show (pick up, lift, show, put down), again and again,
+    up to `repeats` times, until Stop, or until finish_show() says the guest has named the card."""
+    global FINISH_REQUESTED
+    on_step = on_step or _noop
+    FINISH_REQUESTED = False
+    repeats = repeats or SHOW_REPEATS
+    result = {"ok": False}
+    for n in range(1, repeats + 1):
+        if n > 1:
+            await on_step("policy", f"Showing the card again ({n} of {repeats})")
+        result = await run_act(on_step=on_step, name="show")
+        if STOP_REQUESTED or FINISH_REQUESTED:
+            break
+    FINISH_REQUESTED = False
+    return result
+
+
+def finish_show() -> None:
+    """The guest has named the card: the current show is the last one."""
+    global FINISH_REQUESTED
+    FINISH_REQUESTED = True
